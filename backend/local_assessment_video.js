@@ -4,6 +4,10 @@ const localReviewStatus=document.createElement('div');
 localReviewStatus.id='localRecordingStatus';localReviewStatus.setAttribute('role','status');
 localReviewStatus.style.cssText='position:absolute;top:42px;left:16px;z-index:9;background:#102e27e8;color:#fff;padding:6px 10px;border-radius:8px;font:13px sans-serif;max-width:75%;pointer-events:none';
 localReviewStatus.hidden=true;document.getElementById('stage').append(localReviewStatus);
+if(testingMouthEnabled()){
+  localReviewStatus.style.cssText='position:static;margin:8px 0;color:#c4d8d0;font:13px sans-serif';
+  document.getElementById('top').after(localReviewStatus);
+}
 function reviewStatus(text){if(!localReview.enabled)return;localReviewStatus.hidden=false;localReviewStatus.textContent=text;}
 function reviewPhase(){
   if(calibratingAssessment)return 'Camera / lap calibration';
@@ -23,14 +27,21 @@ function drawLocalReview(recording){
   const fmt=v=>Number.isFinite(v)?`${v.toFixed(1)}°`:'not tracked';
   c.font='18px sans-serif';c.fillStyle='#fff';
   c.fillText(`${recording.taskId}  |  video ${((now-recording.startedAt)/1000).toFixed(1)} s  |  ${reviewPhase()}`,16,h+27,w-32);
-  ['arm_elevation','elbow_extension'].forEach((key,i)=>{
+  const mouth=recording.taskId==='T3';
+  const keys=mouth && rubric ? rubric.criteria.map(rule=>rule.metric) : ['arm_elevation','elbow_extension'];
+  const evidence=mouth?assessmentQuality.snapshot():null;
+  keys.forEach((key,i)=>{
     const rule=rubric?.criteria.find(r=>r.metric===key),measurement=assessmentQuality.measurements[key];
-    const label=key==='arm_elevation'?'Arm elevation (model 3D)':'Elbow extension (2D)';
+    const label=key==='arm_elevation'?'Arm elevation (model 3D)':key==='elbow_flexion'?'Elbow bend (2D)':key==='target_control'?'Target control':'Elbow extension (2D)';
+    const unit=v=>key==='target_control'?(Number.isFinite(v)?`${(v*100).toFixed(1)}%`:'not tracked'):fmt(v);
     c.fillStyle=i?'#facc15':'#67e8f9';
-    c.fillText(`${label}: ${fmt(raw[key])}   |   reference: ${rule?fmt(rule.target):'not used in this step'}   |   valid peak: ${fmt(measurement?.peak?.value)}`,16,h+57+i*28,w-32);
+    const statistic=evidence?.measurements[key];
+    c.fillText(mouth
+      ? `${label} | reference: ${rule?unit(rule.target):'not used'} | ${statistic?.statistic_source||'collecting'}: ${statistic?.samples>=5?unit(statistic.value):'not measured'}`
+      : `${label}: ${fmt(raw[key])}   |   reference: ${rule?fmt(rule.target):'not used in this step'}   |   valid peak: ${fmt(measurement?.peak?.value)}`,16,h+57+i*28,w-32);
   });
   c.fillStyle='#fff';c.font='16px sans-serif';
-  const caption=(document.getElementById('reachGuidance')?.textContent || voiceText.textContent || '').trim();
+  const caption=((mouth?document.getElementById('mouthCaption')?.textContent:document.getElementById('reachGuidance')?.textContent) || voiceText.textContent || '').trim();
   const words=caption.split(' ');let line='',row=0;
   for(const word of words){if(c.measureText(line+word).width>w-32){c.fillText(line,16,h+113+row*21);line='';if(++row>1)break;}line+=word+' ';}
   if(row<2)c.fillText(line,16,h+113+row*21);

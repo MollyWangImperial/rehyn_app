@@ -23,7 +23,7 @@ def _key(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def build_bundle(reference: Path, output: Path, *, max_cues: int | None = None) -> None:
+def build_bundle(reference: Path, output: Path, *, max_cues: int | None = None, lines=LINES) -> None:
     if not reference.is_file():
         raise FileNotFoundError("Molly reference recording not found")
     ffmpeg = shutil.which("ffmpeg")
@@ -36,12 +36,12 @@ def build_bundle(reference: Path, output: Path, *, max_cues: int | None = None) 
     else:
         bundle = {"version": 1, "voice": "Molly", "entries": {}}
     entries = bundle["entries"]
-    for index, line in enumerate(LINES, 1):
+    for index, line in enumerate(lines, 1):
         if max_cues is not None and index > max_cues:
             break
         key = _key(line)
         if key in entries:
-            print(f"{index}/{len(LINES)} cached", flush=True)
+            print(f"{index}/{len(lines)} cached", flush=True)
             continue
         source = synthesize_mp3(line, reference, ffmpeg)
         encoded = subprocess.run(
@@ -57,8 +57,8 @@ def build_bundle(reference: Path, output: Path, *, max_cues: int | None = None) 
         temporary = output.with_suffix(".tmp")
         temporary.write_text(json.dumps(bundle, separators=(",", ":")), encoding="ascii")
         temporary.replace(output)
-        print(f"{index}/{len(LINES)} generated ({len(encoded)} bytes)", flush=True)
-    print(f"bundle_bytes={output.stat().st_size} cues={len(entries)}/{len(LINES)}", flush=True)
+        print(f"{index}/{len(lines)} generated ({len(encoded)} bytes)", flush=True)
+    print(f"bundle_bytes={output.stat().st_size} cues={len(entries)}/{len(lines)}", flush=True)
     if max_cues is None and output.stat().st_size >= 1_000_000:
         raise RuntimeError("Bundle exceeds the private Render secret-file limit")
 

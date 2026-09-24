@@ -316,10 +316,12 @@ export type TestingAssessmentReport = {
       criteria: {
         metric: string; label: string; target: number; observed: number | null; unit: string; attainment: number | null;
         statistic_source?: "target_median" | "movement_median" | "sample_proportion" | "movement_maximum" | null;
+        statistic_samples?: number | null;
         peak_elapsed_ms?: number | null;
         series?: { elapsed_ms: number; value: number; in_target: boolean }[];
       }[];
       compensations: { id: string; label: string; cue: string; status: string; threshold: number;
+        unit?: string; max_value?: number | null; max_streak_ms?: number | null; eligible_ms?: number | null;
         method?: string; face_threshold?: number; shoulder_peak?: number | null; face_peak?: number | null;
         confirmed_cues?: Record<string, { duration_ms: number; peak: number; threshold: number }> }[];
       measurements: { metric: string; label: string; unit: string; samples: number; median: number | null; endpoint: number | null; min: number | null; max: number | null }[];

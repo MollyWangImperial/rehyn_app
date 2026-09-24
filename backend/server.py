@@ -7110,6 +7110,7 @@ async function fetchVoiceAudio(text,purpose="instruction"){
 }
 
 function prefetchVoice(text){
+  if(testingMouthEnabled()){prefetchMouthVoice(text);return;}
   if(testingReachEnabled() || !VOICE_GUIDANCE_ENABLED || !text) return;
   fetchVoiceAudio(text).catch(() => {});
 }
@@ -7119,6 +7120,7 @@ function prefetchUpcomingVoice(){
   if(!task || !Array.isArray(task.steps)) return;
   const nextStep = task.steps[currentStepIdx + 1];
   if(nextStep && nextStep.voice){
+    if(testingMouthEnabled()){mouthStepLines(nextStep).forEach(prefetchMouthVoice);return;}
     prefetchVoice(nextStep.voice);
   }
 }
@@ -7140,6 +7142,7 @@ function offerVoiceRetry(text,purpose="instruction"){
 }
 
 async function playVoice(text,purpose="instruction"){
+  if(testingMouthEnabled()) return mouthSay(text);
   if(testingReachEnabled()) return reachSay(text);
   if(!VOICE_GUIDANCE_ENABLED){
     voiceText.textContent = "Voice guidance off · follow on-screen text";
@@ -7306,7 +7309,7 @@ async function startStep(){
   thumbIndexMinDistanceRatio = Infinity;
   stepStartBodyState = null;
   dynamicTargetPos = null;
-  if(currentStepIdx === 0) mouthTargetCalibration = newMouthTargetCalibration();
+  if(currentStepIdx === 0 && !testingMouthEnabled()) mouthTargetCalibration = newMouthTargetCalibration();
   if(currentStepIdx === 0){
     affectedHandTrackWrist = null;
     affectedHandTrackSeenAt = 0;
@@ -7333,7 +7336,10 @@ async function startStep(){
   document.body.classList.add("voice-playing");
   document.body.classList.remove("step-active");
   postRN({type:"step_start", task_id: task.id, step_id: step.id});
-  if(testingReachEnabled()){
+  if(testingMouthEnabled()){
+    for(const line of mouthStepLines(step))await playVoice(line);
+    document.getElementById("mouthCaption").textContent=step.caption;
+  }else if(testingReachEnabled()){
     for(const line of reachStepVoiceLines(step))await playVoice(line);
     if(step.id==="T1-S2"){
       reachCaption.textContent=step.caption;
@@ -7847,7 +7853,7 @@ function calibrationLandmarkStatus(lm){
     seatedAnchorsVisible,
     lapReady,
     lapGuidance:lapCalibrationDiagnostic.guidance,
-    ready:cameraReady && armVisible && seatedAnchorsVisible && lapReady,
+    ready:cameraReady && armVisible && seatedAnchorsVisible && lapReady && (!testingMouthEnabled() || mouthTargetCalibration.locked),
   };
 }
 
@@ -7921,6 +7927,8 @@ function updatePreAssessmentCalibrationUI(lm){
       ? trunkBaselineGuidance
       : status.armVisible && status.seatedAnchorsVisible && !status.lapReady
       ? status.lapGuidance
+      : testingMouthEnabled() && lapLocated && !mouthTargetCalibration.locked
+      ? "Lap point saved. Keep your mouth visible and your head still while the mouth target is located."
       : "Keep still. Assessment will start automatically.";
   }
 }
@@ -7930,7 +7938,7 @@ async function completePreAssessmentCalibration(){
   calibrationAutoStartInProgress = true;
   calibrationAutoStatus.classList.add("ready");
   calibrationAutoStatus.textContent = "Calibration complete. Starting assessment...";
-  calibrationLead.textContent = assessmentQuality.trunkLeanBaseline
+  calibrationLead.textContent = (testingMouthEnabled() ? assessmentQuality.baseline : assessmentQuality.trunkLeanBaseline)
     ? "Stay seated in this position and do not move the camera. The assessment will begin automatically."
     : "Your lap and reach targets are set. The trunk-lean reference was unavailable; the exercise will begin automatically.";
   await playVoice(CALIBRATION_COMPLETE_INSTRUCTION);
@@ -7945,6 +7953,7 @@ async function completePreAssessmentCalibration(){
       ? (forwardReachPlacement.lapRadius || forwardReachPlacement.radius)
       : Math.min(Math.max(0.10, shoulderWidth(latestPoseLandmarks) * 0.55), 0.18)
     : null;
+  if(testingMouthEnabled() && latestPoseLandmarks){const chest=midpoint(latestPoseLandmarks[11],latestPoseLandmarks[12]);mouthFlow.chestTarget=mirrorX({x:chest.x,y:chest.y+0.06});}
   preservePreAssessmentLapCalibration = true;
   calibratingAssessment = false;
   calibrationOverlay.classList.add("hidden");
@@ -8298,11 +8307,12 @@ function affectedMouthContactPoints(lm){
 function closestAffectedHandPointToTarget(lm, target){
   const points = affectedMouthContactPoints(lm);
   if(!points.length || !target) return null;
-  return points.reduce((closest, point) => distXY(point, target) < distXY(closest, target) ? point : closest);
+  const distance = testingMouthEnabled() ? mouthScreenDistance : distXY;
+  return points.reduce((closest, point) => distance(point, target) < distance(closest, target) ? point : closest);
 }
 
 function mouthContactDistance(lm, target){
-  return distXY(closestAffectedHandPointToTarget(lm, target), target);
+  return testingMouthEnabled() ? mouthScreenDistance(closestAffectedHandPointToTarget(lm,target),target) : distXY(closestAffectedHandPointToTarget(lm, target), target);
 }
 
 function handPalmCenter(){
@@ -8367,6 +8377,7 @@ function getEffectiveTargetXY(step){
     if(!forwardReachPlacement?.ready) return null;
     return {...(step.id === "T1-S1" ? forwardReachPlacement.start : forwardReachPlacement.raised)};
   }
+  if(testingMouthEnabled() && step.id==="T3-S1" && mouthFlow.chestTarget)return mouthFlow.chestTarget;
   if(isCenteredArmStartStep(step)){
     return {x:0.5, y:step.target.y};
   }
@@ -8987,7 +8998,7 @@ async function speakTargetNearMiss(diagnostic){
   if(!step || correctionVoicePlaying) return;
   const expectedStepId = step.id;
   correctionVoicePlaying = true;
-  const correction = `You're close. ${diagnostic.guidance}`;
+  const correction = testingMouthEnabled() ? MOUTH_TEST_VOICE.near[diagnostic.reason==="movement_gate_not_met"?1:diagnostic.reason==="just_outside_circle"?0:2] : `You're close. ${diagnostic.guidance}`;
   captionEl.textContent = correction;
   postRN({type:"target_near_miss", ...diagnostic});
   try{
@@ -9171,7 +9182,7 @@ function checkTarget(landmarks){
     const affectedWristRaw = sideLandmarks(landmarks, AFFECTED_SIDE).wrist;
     if(!landmarkIsUsable(affectedWristRaw)) return false;
     const targetXY = getEffectiveTargetXY(step);
-    return distXY(affectedWristRaw, targetXY) < effectiveRadius(step, landmarks);
+    return (testingMouthEnabled() ? mouthScreenDistance(affectedWristRaw,targetXY) : distXY(affectedWristRaw, targetXY)) < effectiveRadius(step, landmarks);
   }
   if(isHandTask()){
     const target = step.target;
@@ -9236,7 +9247,7 @@ function checkTarget(landmarks){
       return forwardReachDistance(closestAffectedReachPointToTarget(landmarks, targetXY), targetXY);
     }
     const affectedWrist = sideLandmarks(landmarks, AFFECTED_SIDE).wrist;
-    return distXY(affectedWrist ? mirrorX(affectedWrist) : null, targetXY);
+    return testingMouthEnabled() ? mouthScreenDistance(affectedWrist ? mirrorX(affectedWrist) : null,targetXY) : distXY(affectedWrist ? mirrorX(affectedWrist) : null, targetXY);
   };
 
   if(which === "HAND_OPEN"){
@@ -9360,7 +9371,7 @@ function drawTestingReachAngles(landmarks, world=latestPoseWorldLandmarks){
 
 function drawOverlay(landmarks){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  const armOnly = LIBRARY_TEST_MODE && tasks[currentTaskIdx]?.id === "T1";
+  const armOnly = LIBRARY_TEST_MODE && ["T1","T3"].includes(tasks[currentTaskIdx]?.id);
   // draw skeleton
   if(landmarks){
     if(armOnly){
@@ -9374,8 +9385,7 @@ function drawOverlay(landmarks){
       }
       for(const p of arm){if(!visible(p))continue;ctx.beginPath();ctx.arc(p.x*canvas.width,p.y*canvas.height,5,0,Math.PI*2);ctx.fill();}
       ctx.restore();
-      // Pose Landmarker face points 0-10 are shown only in the T1 testing view.
-      // Its ear points (7, 8) are the measurements used by the face-width cue.
+      // Pose face points support the T1 face-width cue and T3 nose/ear cue.
       const faceVisible = p => p && [p.x,p.y].every(Number.isFinite) && (p.visibility ?? 0) >= .45;
       const leftEar=landmarks[7],rightEar=landmarks[8];
       ctx.save();
@@ -9647,6 +9657,7 @@ async function celebrateAndAdvance(){
   if(navigator.vibrate) navigator.vibrate([60, 40, 100]);
 
   stopAndSaveTaskRecording(finishedTask.id);
+  if(testingMouthEnabled())taskResults[currentTaskIdx].metrics.assisted=mouthFlow.assisted;
   await finishLocalReview(taskResults[currentTaskIdx]);
   persistTaskProgress(finishedTask.id);
 
@@ -9684,6 +9695,7 @@ async function finishAssessment(){
   running = false;
   audioEl.pause();
   if(LIBRARY_TEST_MODE){
+    if(testingMouthEnabled()){stopMouthVoice();if(taskResults[0])taskResults[0].metrics.assisted=mouthFlow.assisted;}
     if(testingReachEnabled()){
       if(taskResults[0])taskResults[0].metrics.testing_reach={support_available:reachFlow.support,stopped:reachFlow.stopped};
       stopReachVoice();
@@ -9777,6 +9789,7 @@ function loop(){
       // Waiting until the hand covers the mouth can pull facial landmarks and
       // the target away from the anatomical mouth center.
       if(activeTask && activeTask.id === "T3" && !mouthTargetCalibration.locked
+        && (!testingMouthEnabled() || lapTargetCalibration.ready)
         && (currentStepIdx === 0 || isMouthTarget(getCurrentStep()))){
         updateMouthTargetCalibration(landmarks, lastPoseScanTs);
       }
@@ -9814,7 +9827,8 @@ function loop(){
   computeHandMetrics();
   tickTestingReach(landmarks,now);
   const reachFrameValid = !testingReachEnabled() || !!reachObservation(landmarks,now);
-  const inTarget = !calibratingAssessment && reachCanMeasure() && reachFrameValid && !correctionVoicePlaying && checkTarget(landmarks);
+  const mouthFrameValid=!testingMouthEnabled() || (cameraFrameReady && !!landmarks && now-lastPoseScanTs<=200 && now-lastAngleVideoAt<=250);
+  const inTarget = !calibratingAssessment && mouthCanMeasure() && mouthFrameValid && reachCanMeasure() && reachFrameValid && !correctionVoicePlaying && checkTarget(landmarks);
   if(lastPoseScanTs !== lastQualityPoseAt){
     lastQualityPoseAt = lastPoseScanTs;
     const qualityAspect=video.videoWidth>0 && video.videoHeight>0 ? video.videoWidth/video.videoHeight : 1;
@@ -9824,7 +9838,7 @@ function loop(){
     const postureCalibrationReady=!calibratingAssessment || !testingReachEnabled() || lapTargetCalibration.ready;
     if(postureCalibrationReady && (calibratingAssessment || (!assessmentQuality.baseline && voiceFinishedAt === 0)))
       assessmentQuality.calibrate(landmarks, latestPoseWorldLandmarks, qualityAspect);
-    if(!calibratingAssessment && reachCanMeasure() && reachFrameValid && voiceFinishedAt > 0 && !stepCompleted && !celebrateEl.classList.contains("show")){
+    if(!calibratingAssessment && mouthCanMeasure() && mouthFrameValid && reachCanMeasure() && reachFrameValid && voiceFinishedAt > 0 && !stepCompleted && !celebrateEl.classList.contains("show")){
       const freshHand = now - latestHandSeenAt <= 150 ? latestHandLandmarks : null;
       assessmentQuality.sample({pose:landmarks,world:latestPoseWorldLandmarks,hand:freshHand,handOpen:handOpenScore,handClosed:fistClosureScore,pinch:pinchScore,gaitAlternations:gaitAlternationCount,inTarget,now,aspectRatio:qualityAspect});
       const active=assessmentQuality.active();
@@ -9844,13 +9858,14 @@ function loop(){
   if(cameraFrameReady && video.currentTime !== lastAngleVideoTime){lastAngleVideoTime=video.currentTime;lastAngleVideoAt=performance.now();}
   const anglesFresh = cameraFrameReady && performance.now()-lastPoseScanTs <= 250 && performance.now()-lastAngleVideoAt <= 250;
   drawTestingReachAngles(anglesFresh ? landmarks : null, anglesFresh ? latestPoseWorldLandmarks : null);
+  drawTestingMouth(anglesFresh ? landmarks : null, anglesFresh ? latestPoseWorldLandmarks : null);
 
   if(calibratingAssessment){
     requestAnimationFrame(loop);
     return;
   }
 
-  if(testingReachEnabled() && (!reachCanMeasure() || !reachFrameValid)){
+  if((testingMouthEnabled() && (!mouthCanMeasure() || !mouthFrameValid)) || (testingReachEnabled() && (!reachCanMeasure() || !reachFrameValid))){
     inTargetSince=null;lastInTargetTs=0;requestAnimationFrame(loop);return;
   }
 
@@ -9921,7 +9936,7 @@ async function beginAssessmentSetup(){
     return;
   }
   const firstStep = tasks[currentTaskIdx] && tasks[currentTaskIdx].steps && tasks[currentTaskIdx].steps[0];
-  const firstVoicePromise = !testingReachEnabled() && firstStep && firstStep.voice
+  const firstVoicePromise = !testingReachEnabled() && !testingMouthEnabled() && firstStep && firstStep.voice
     ? fetchVoiceAudio(firstStep.voice).catch(() => null)
     : Promise.resolve(null);
   calibratingAssessment = shouldRunSeatedCalibration();
@@ -9938,6 +9953,7 @@ async function beginAssessmentSetup(){
     assessmentQuality.baselines=[];
     assessmentQuality.baseline=null;
   }
+  if(testingMouthEnabled()){assessmentQuality.baselines=[];assessmentQuality.baseline=null;mouthTargetCalibration=newMouthTargetCalibration();}
   patientFaceReferenceSamples = [];
   patientFaceReference = null;
   lastPatientFaceReferenceAt = 0;
@@ -9952,7 +9968,7 @@ async function beginAssessmentSetup(){
       calibrationLap.querySelector("span:last-child").textContent = "Hold your hand still on your lap for 2 seconds";
     }
     updatePreAssessmentCalibrationUI(null);
-    prefetchVoice(testingReachEnabled() ? TESTING_REACH_CALIBRATION_INSTRUCTION : CALIBRATION_INSTRUCTION);
+    prefetchVoice(testingMouthEnabled() ? MOUTH_TEST_VOICE.calibration : testingReachEnabled() ? TESTING_REACH_CALIBRATION_INSTRUCTION : CALIBRATION_INSTRUCTION);
     prefetchVoice(CALIBRATION_COMPLETE_INSTRUCTION);
   }
   startBtn.textContent = "Opening camera...";
@@ -9986,7 +10002,7 @@ async function beginAssessmentSetup(){
   running = true;
   requestAnimationFrame(loop);
   if(calibratingAssessment){
-    await playVoice(testingReachEnabled() ? TESTING_REACH_CALIBRATION_INSTRUCTION : CALIBRATION_INSTRUCTION);
+    await playVoice(testingMouthEnabled() ? MOUTH_TEST_VOICE.calibration : testingReachEnabled() ? TESTING_REACH_CALIBRATION_INSTRUCTION : CALIBRATION_INSTRUCTION);
     calibrationInstructionFinished = true;
     updatePreAssessmentCalibrationUI(latestPoseLandmarks);
     return;
@@ -10215,6 +10231,7 @@ markerStoreBtn.addEventListener("click", () => {
 });
 
 skipBtn.addEventListener("click", () => {
+  if(testingMouthEnabled() && (!mouthCanMeasure() || calibratingAssessment || stepCompleted)) return;
   if(testingReachEnabled() && (!reachCanMeasure() || stepCompleted)) return;
   if(!running) return;
   if(waitingForAdvancedGate) return;
@@ -10228,6 +10245,7 @@ exitBtn.addEventListener("click", async () => {
     await finishLocalReview(taskResults[currentTaskIdx] || {task_id:task.id,completed_steps:0,total_steps:task.steps.length,steps:[],metrics:{stopped:true}});
   }
   if(testingReachEnabled()){stopReachVoice();running=false;if(video.srcObject)video.srcObject.getTracks().forEach(t=>t.stop());}
+  if(testingMouthEnabled()){stopMouthVoice();running=false;if(video.srcObject)video.srcObject.getTracks().forEach(t=>t.stop());}
   postRN({type:"exit"});
 });
 
@@ -10242,11 +10260,16 @@ postRN({type:"ready"});
 """
 
 
+from backend.testing_mouth_voice_lines import CALIBRATION as MOUTH_CALIBRATION, STEPS as MOUTH_STEPS, NEAR as MOUTH_NEAR, LINES as MOUTH_LINES
+POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", "<script>window.MOUTH_TEST_VOICE=" + json.dumps({"calibration":MOUTH_CALIBRATION,"steps":MOUTH_STEPS,"near":MOUTH_NEAR,"lines":MOUTH_LINES}) + ";</script></head>")
+
 # Testing-only support, adaptation and narration share the existing runner geometry.
-for _testing_script in ("testing_reach.js", "reach_voice.js"):
+for _testing_script in ("testing_reach.js", "reach_voice.js", "testing_mouth.js"):
     POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", "<script>" + (ROOT_DIR / _testing_script).read_text(encoding="utf-8") + "</script></head>")
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('<div id="stage">', '<div id="stage">' + (ROOT_DIR / "testing_reach_ui.html").read_text(encoding="utf-8"), 1)
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('let startSetupInProgress = false;', (ROOT_DIR / "testing_reach_flow.js").read_text(encoding="utf-8") + '\nlet startSetupInProgress = false;', 1)
+POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('<div id="stage">', '<div id="stage">' + (ROOT_DIR / "testing_mouth_ui.html").read_text(encoding="utf-8"), 1)
+POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('let startSetupInProgress = false;', (ROOT_DIR / "testing_mouth_flow.js").read_text(encoding="utf-8") + '\nlet startSetupInProgress = false;', 1)
 
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('let startSetupInProgress = false;', (ROOT_DIR / "local_assessment_video.js").read_text(encoding="utf-8") + '\nlet startSetupInProgress = false;', 1)
 

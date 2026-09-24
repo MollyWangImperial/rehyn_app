@@ -31,6 +31,7 @@
       this.rubric=rubric;
       this.measurements={}; this.observations={}; this.compensations={}; this.lastTime=null;
       this.seriesStart=null;
+      this.currentMetrics={};
       this.sawClosed=false; this.openCloseCycle=0;
     }
     raw(p,w,aspectRatio=1) {
@@ -146,6 +147,7 @@
           r.trunk_lean_evidence=evidence;
         }
       }
+      this.currentMetrics=r;
       // Keep diagnostic measurements separate from the scoring criteria. These
       // make a test run inspectable without changing the patient scoring rubric.
       const diagnosticKeys=new Set([...this.rubric.criteria.map(rule=>rule.metric),
@@ -161,8 +163,9 @@
       for(const rule of this.rubric.criteria) {
         const v=r[rule.metric];
         if(!finite(v)) continue;
-        const record=this.measurements[rule.metric] ||= {samples:0,values:[],endpoints:[],series:[],seriesInterval:100,lastSeriesAt:null};
+        const record=this.measurements[rule.metric] ||= {samples:0,total:0,values:[],endpoints:[],series:[],seriesInterval:100,lastSeriesAt:null};
         record.samples++;
+        record.total+=v;
         if(!record.peak || v>record.peak.value) record.peak={elapsed_ms:Math.max(0,Math.round(now-this.seriesStart)),value:v,in_target:!!inTarget};
         record.values.push(v);
         if(record.values.length>600) record.values.shift();
@@ -219,7 +222,8 @@
         // Preserve the exact winning frame even if chart decimation drops it.
         const series=peak && r.peak ? [...r.series.filter(p=>p.elapsed_ms!==r.peak.elapsed_ms).slice(-239),r.peak].sort((a,b)=>a.elapsed_ms-b.elapsed_ms) : r.series;
         return [k,{samples:r.samples,
-        value:peak ? r.peak?.value : k==="target_control" ? r.values.reduce((sum,value)=>sum+value,0)/r.values.length : quantile(r.endpoints.length>=5?r.endpoints:r.values,.5),
+        value:peak ? r.peak?.value : k==="target_control" ? r.total/r.samples : quantile(r.endpoints.length>=5?r.endpoints:r.values,.5),
+        statistic_samples:peak ? r.samples : k==="target_control" ? r.samples : (r.endpoints.length>=5?r.endpoints:r.values).length,
         statistic_source:peak ? "movement_maximum" : k==="target_control" ? "sample_proportion" : r.endpoints.length>=5 ? "target_median" : "movement_median",
         peak_elapsed_ms:peak ? r.peak?.elapsed_ms : null,series}];})),
         compensations:Object.fromEntries(Object.entries(this.compensations).map(([k,c])=>[k,{eligible_ms:Math.round(c.eligible_ms),max_value:c.max_value,max_streak_ms:Math.round(c.max_streak_ms),

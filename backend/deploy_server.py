@@ -8,9 +8,11 @@ from fastapi.responses import FileResponse, RedirectResponse
 from backend.server import app
 from backend.local_assessment_recordings import router as local_recordings_router
 from backend.testing_reach_voice import router as testing_reach_voice_router
+from backend.testing_mouth_voice import router as testing_mouth_voice_router
 
 app.include_router(local_recordings_router)
 app.include_router(testing_reach_voice_router)
+app.include_router(testing_mouth_voice_router)
 
 
 WEB_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
@@ -42,6 +44,12 @@ async def web_index() -> FileResponse:
 async def direct_seated_forward_reach(affected_side: str = "right"):
     side = "left" if affected_side == "left" else "right"
     return RedirectResponse(f"/assessment?package=upper_limb&start_task=T1&task_ids=T1&library_test=1&affected_side={side}", status_code=307)
+
+
+@app.get("/testing/hand-to-mouth", include_in_schema=False)
+async def direct_hand_to_mouth(affected_side: str = "right"):
+    side = "left" if affected_side == "left" else "right"
+    return RedirectResponse(f"/assessment?package=upper_limb&start_task=T3&task_ids=T3&library_test=1&affected_side={side}", status_code=307)
 
 
 @app.get("/testing/trunk-lean-comparison", include_in_schema=False)

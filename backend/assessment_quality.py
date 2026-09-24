@@ -137,6 +137,11 @@ def score_step(step, rubric):
         sustained = bool(verified_cues) if cue_evidence is not None else (number(raw.get("max_streak_ms")) or 0) >= 500
         confirmed = available and sustained and (comparison_lean or (number(raw.get("max_value")) or 0) > COMPENSATIONS[cid]["threshold"])
         check = {"id": cid, **COMPENSATIONS[cid], "status": "detected" if confirmed else "not_detected" if available else "not_measured"}
+        if rubric["id"].startswith("T3-"):
+            check.update({"unit": "proxy" if cid == "head_drop" else "deg",
+                          "max_value": number(raw.get("max_value")) if current else None,
+                          "max_streak_ms": number(raw.get("max_streak_ms")) if current else None,
+                          "eligible_ms": number(raw.get("eligible_ms")) if current else None})
         if comparison_lean:
             check.update({"method": raw["method"], "face_threshold": 7,
                           "shoulder_peak": number(raw.get("shoulder_peak")),
@@ -310,6 +315,7 @@ def testing_task_report(task, rubrics):
             criterion["series"] = series
             source = measurement.get("statistic_source")
             criterion["statistic_source"] = source if source in {"target_median", "movement_median", "sample_proportion", "movement_maximum"} else None
+            criterion["statistic_samples"] = number(measurement.get("statistic_samples")) if current else None
             criterion["peak_elapsed_ms"] = number(measurement.get("peak_elapsed_ms")) if current and source == "movement_maximum" else None
         completion_only = step.get("scoring_method") == "target_completion"
         if completion_only:
