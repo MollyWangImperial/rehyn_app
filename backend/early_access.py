@@ -11,13 +11,23 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError, field_validator, model_validator
 from pymongo.errors import DuplicateKeyError
 from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 
-NOTICE_VERSION = "early-access-v1"
-NOTICE_TEXT = "We'll use your email for early-access updates. Contact info@rehyn.com to leave the list."
+try:
+    from backend.early_access_notifications import SignupNotifier
+except ModuleNotFoundError:
+    from early_access_notifications import SignupNotifier
+
+NOTICE_VERSION = "early-access-v2"
+LEGACY_NOTICE_TEXT = "We'll use your email for early-access updates. Contact info@rehyn.com to leave the list."
+NOTICE_TEXT = (
+    "We'll use your email for early-access updates. On signup, we record this visit's "
+    "visible-page time and notify our team with your email, signup time and browsing-time "
+    "estimate. No tracking cookies. Contact info@rehyn.com to leave the list."
+)
 ALLOWED_ORIGINS = frozenset({
     "https://rehyn.com", "https://www.rehyn.com",
     "https://rehyn-website-static.onrender.com",
@@ -30,13 +40,20 @@ class EarlyAccessSignup(BaseModel):
 
     email: EmailStr = Field(max_length=254)
     form_location: Literal["hero", "footer"]
-    notice_version: Literal["early-access-v1"]
+    notice_version: Literal["early-access-v1", "early-access-v2"]
+    browsing_seconds: int | None = Field(default=None, strict=True, ge=0, le=86400)
     website: str = Field(default="", max_length=0)
 
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, value):
         return value.strip().lower() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def timing_requires_notice(self):
+        if self.browsing_seconds is not None and self.notice_version != NOTICE_VERSION:
+            raise ValueError("Page timing requires the updated signup notice")
+        return self
 
 
 class SignupRateLimiter:
@@ -65,15 +82,20 @@ class SignupRateLimiter:
 async def save_signup(collection, signup):
     email = str(signup.email)
     record_id = hashlib.sha256(email.encode()).hexdigest()
+    now = datetime.now(timezone.utc)
     record = {
         "_id": record_id,
         "email": email,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": now,
         "source": "rehyn.com",
         "form_location": signup.form_location,
-        "notice_version": NOTICE_VERSION,
-        "notice_text": NOTICE_TEXT,
+        "notice_version": signup.notice_version,
+        "notice_text": NOTICE_TEXT if signup.notice_version == NOTICE_VERSION else LEGACY_NOTICE_TEXT,
+        "browsing_seconds": signup.browsing_seconds,
+        "browsing_measurement": "visible-page-v1" if signup.browsing_seconds is not None else None,
         "status": "subscribed",
+        # The notification is committed atomically with the registration.
+        "notification": {"status": "pending", "attempts": 0, "next_attempt_at": now},
     }
     try:
         result = await collection.update_one(
@@ -89,7 +111,7 @@ async def save_signup(collection, signup):
         raise RuntimeError("Waitlist read-back failed")
 
 
-def create_early_access_router(database, *, allowed_origins=ALLOWED_ORIGINS, limiter=None):
+def create_early_access_router(database, *, allowed_origins=ALLOWED_ORIGINS, limiter=None, notifier_factory=SignupNotifier):
     router = APIRouter(prefix="/api")
     limiter = limiter or SignupRateLimiter()
     # Use the actual Mongo database, never the app's development file fallback.
@@ -98,6 +120,9 @@ def create_early_access_router(database, *, allowed_origins=ALLOWED_ORIGINS, lim
         write_concern=WriteConcern(w="majority", wtimeout=10000),
         read_concern=ReadConcern("majority"),
     )
+    notifier = notifier_factory(collection)
+    router.add_event_handler("startup", notifier.start)
+    router.add_event_handler("shutdown", notifier.stop)
 
     @router.post("/early-access")
     async def register(request: Request):
@@ -124,6 +149,7 @@ def create_early_access_router(database, *, allowed_origins=ALLOWED_ORIGINS, lim
             raise HTTPException(503, "We couldn't save your email. Please try again.",
                                 headers={"Retry-After": "5"}) from None
         # Same response for new and existing records; no public directory or lookup.
+        notifier.wake()
         return JSONResponse({"ok": True, "saved": True}, headers={"Cache-Control": "no-store"})
 
     return router
