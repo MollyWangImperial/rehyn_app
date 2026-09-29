@@ -84,6 +84,7 @@ try:
     from backend.alira_action_log import AliraActionLogger
     from backend.account_reset import AccountResetRequest, reset_patient_account
     from backend.early_access import create_early_access_router
+    from backend.trial_access import create_trial_access_router
     from backend.rehab_games import game_catalog, rehab_game_html
 except ImportError:
     from rehab_assessment import (
@@ -133,6 +134,7 @@ except ImportError:
     from alira_action_log import AliraActionLogger
     from account_reset import AccountResetRequest, reset_patient_account
     from early_access import create_early_access_router
+    from trial_access import create_trial_access_router
     from rehab_games import game_catalog, rehab_game_html
 
 try:
@@ -18757,3 +18759,4 @@ async def shutdown_db_client():
 # are registered.
 app.include_router(api_router)
 app.include_router(create_early_access_router(_mongo_database))
+app.include_router(create_trial_access_router(_require_trial_access_code))
