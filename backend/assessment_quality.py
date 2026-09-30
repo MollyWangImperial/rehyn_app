@@ -32,7 +32,7 @@ def step_rubric(task, step):
     sid = step["id"]
     tid = task["id"]
     target = step.get("target", {}).get("landmark")
-    if tid == "T1" and sid == "T1-S4":
+    if (tid, sid) in {("T1", "T1-S4"), ("T3", "T3-S4")}:
         return {"id": sid, "label": step.get("caption", sid), "criteria": [],
                 "compensations": [], "scoring_method": "target_completion"}
     criteria = []
@@ -100,6 +100,56 @@ def number(raw):
     return float(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) and isfinite(raw) else None
 
 
+def compensation_checks(step, rubric):
+    """Verify sustained compensation evidence independently of movement points."""
+    evidence = (value(step, "metrics", {}) or {}).get("quality") or {}
+    current = evidence.get("version") == VERSION
+    checks = []
+    for cid in rubric["compensations"]:
+        raw = (evidence.get("compensations") or {}).get(cid) or {}
+        available = current and (number(raw.get("eligible_ms")) or 0) >= 500
+        size_cue = (rubric['id'].startswith('T3-') and
+                    ((cid == 'trunk_lean' and raw.get('method') == 'image_shoulder_expansion_v3') or
+                     (cid == 'head_drop' and raw.get('method') == 'image_face_expansion_v4')))
+        threshold = (10 if cid == 'head_drop' else 12) if size_cue else COMPENSATIONS[cid]['threshold']
+        comparison_lean = (cid == "trunk_lean" and rubric["id"].startswith(("T1-S", "T3-S"))
+                           and raw.get("method") in {"pelvis_normalized_shoulder_or_face_v1", "pelvis_axis_shoulder_or_face_v2"})
+        cue_evidence = raw.get("cue_evidence") if comparison_lean and isinstance(raw.get("cue_evidence"), Mapping) else None
+        verified_cues = {}
+        if cue_evidence is not None:
+            for cue, threshold, inclusive in (("shoulder", 12, False), ("face", 7, True)):
+                evidence_row = cue_evidence.get(cue)
+                evidence_row = evidence_row if isinstance(evidence_row, Mapping) else {}
+                duration = number(evidence_row.get("duration_ms")) or 0
+                peak = number(evidence_row.get("peak"))
+                if duration >= 500 and peak is not None and (peak >= threshold if inclusive else peak > threshold):
+                    verified_cues[cue] = {"duration_ms": duration, "peak": peak, "threshold": threshold}
+        sustained = bool(verified_cues) if cue_evidence is not None else (number(raw.get("max_streak_ms")) or 0) >= 500
+        confirmed = available and sustained and (comparison_lean or (number(raw.get("max_value")) or 0) > threshold)
+        check = {"id": cid, **COMPENSATIONS[cid], "status": "detected" if confirmed else "not_detected" if available else "not_measured"}
+        if rubric["id"].startswith("T3-"):
+            check.update({"unit": "proxy" if cid == "head_drop" else "deg",
+                          "max_value": number(raw.get("max_value")) if current else None,
+                          "max_streak_ms": number(raw.get("max_streak_ms")) if current else None,
+                          "eligible_ms": number(raw.get("eligible_ms")) if current else None})
+        if cid == "head_drop" and raw.get("method") in {"image_head_nod_or_lowering_v1", "image_head_nod_or_opposite_shoulder_lowering_v2", "image_head_nod_v3"}:
+            check["method"] = raw["method"]
+            if raw["method"] == "image_head_nod_v3":
+                check["label"] = "Head nodding"
+        if cid == "shoulder_hike" and raw.get("method") == "world_shoulder_rise_v2":
+            check["method"] = raw["method"]
+        if size_cue:
+            check.update({'method': raw['method'], 'unit': 'percent', 'threshold': threshold,
+                          'label': 'Head moving forward' if cid == 'head_drop' else 'Trunk lean'})
+        if comparison_lean:
+            check.update({"method": raw["method"], "face_threshold": 7,
+                          "shoulder_peak": number(raw.get("shoulder_peak")),
+                          "face_peak": number(raw.get("face_peak")),
+                          "confirmed_cues": verified_cues})
+        checks.append(check)
+    return checks
+
+
 def score_step(step, rubric):
     if rubric.get("scoring_method") == "target_completion":
         completed = bool(value(step, "completed", False))
@@ -116,38 +166,7 @@ def score_step(step, rubric):
         raw = measures.get(rule["metric"]) or {}
         observed = number(raw.get("value")) if current and (number(raw.get("samples")) or 0) >= MIN_SAMPLES else None
         rows.append({**rule, "observed": observed, "attainment": min(1, max(0, observed / rule["target"])) if observed is not None else None})
-    checks = []
-    for cid in rubric["compensations"]:
-        raw = (evidence.get("compensations") or {}).get(cid) or {}
-        available = current and (number(raw.get("eligible_ms")) or 0) >= 500
-        comparison_lean = (cid == "trunk_lean" and rubric["id"].startswith("T1-S")
-                           and raw.get("method") == "pelvis_normalized_shoulder_or_face_v1")
-        # Confirm one cue held its own threshold for 0.5 s. Alternating short
-        # shoulder and face hits must not add up to a sustained trunk cue.
-        cue_evidence = raw.get("cue_evidence") if comparison_lean and isinstance(raw.get("cue_evidence"), Mapping) else None
-        verified_cues = {}
-        if cue_evidence is not None:
-            for cue, threshold, inclusive in (("shoulder", 12, False), ("face", 7, True)):
-                evidence_row = cue_evidence.get(cue)
-                evidence_row = evidence_row if isinstance(evidence_row, Mapping) else {}
-                duration = number(evidence_row.get("duration_ms")) or 0
-                peak = number(evidence_row.get("peak"))
-                if duration >= 500 and peak is not None and (peak >= threshold if inclusive else peak > threshold):
-                    verified_cues[cue] = {"duration_ms": duration, "peak": peak, "threshold": threshold}
-        sustained = bool(verified_cues) if cue_evidence is not None else (number(raw.get("max_streak_ms")) or 0) >= 500
-        confirmed = available and sustained and (comparison_lean or (number(raw.get("max_value")) or 0) > COMPENSATIONS[cid]["threshold"])
-        check = {"id": cid, **COMPENSATIONS[cid], "status": "detected" if confirmed else "not_detected" if available else "not_measured"}
-        if rubric["id"].startswith("T3-"):
-            check.update({"unit": "proxy" if cid == "head_drop" else "deg",
-                          "max_value": number(raw.get("max_value")) if current else None,
-                          "max_streak_ms": number(raw.get("max_streak_ms")) if current else None,
-                          "eligible_ms": number(raw.get("eligible_ms")) if current else None})
-        if comparison_lean:
-            check.update({"method": raw["method"], "face_threshold": 7,
-                          "shoulder_peak": number(raw.get("shoulder_peak")),
-                          "face_peak": number(raw.get("face_peak")),
-                          "confirmed_cues": verified_cues})
-        checks.append(check)
+    checks = compensation_checks(step, rubric)
     measured = current and bool(rows) and all(row["observed"] is not None for row in rows)
     # At least one posture check must be observed if the step requires them.
     measured = measured and (not checks or any(c["status"] != "not_measured" for c in checks))
@@ -229,12 +248,20 @@ def score_assessment(task_results, rubrics, assigned_task_ids=None):
                 continue
         steps = {value(step, "step_id"): step for step in value(task, "steps", []) or []}
         rows = [score_step(steps.get(rule["id"]), rule) for rule in rubric["steps"]]
+        assisted = (value(task, "metrics", {}) or {}).get("assisted") is True
+        if tid == "T3":
+            # Preserve full lap-completion credit, including assisted returns.
+            # Apply the existing assistance factor to the movement steps only.
+            for row in rows:
+                factor = .5 if assisted and row.get("scoring_method") != "target_completion" else 1
+                row["assistance_factor"] = factor
+                if row["score"] is not None:
+                    row["score"] = round(row["score"] * factor, 1)
         measured = [row["score"] for row in rows if row["score"] is not None]
         # Keep every assigned step's share of the points. Partial evidence earns
         # only its observed points; it does not become a complete movement score.
         earned_score = round(sum(measured) / len(rows), 1) if measured else None
-        assisted = (value(task, "metrics", {}) or {}).get("assisted") is True
-        if assisted and earned_score is not None:
+        if assisted and tid != "T3" and earned_score is not None:
             earned_score = round(earned_score * .5, 1)
         score = earned_score if len(measured) == len(rows) and rows else None
         tasks.append({"task_id": tid, "label": rubric["label"], "domain": rubric["domain"], "score": score,
@@ -286,6 +313,12 @@ def testing_task_report(task, rubrics):
         definitions = {rule["metric"]: (rule["label"], rule["unit"]) for rule in step["criteria"]}
         if tid.startswith("T"):
             definitions.update(TEST_METRICS)
+            if tid == 'T3':
+                patterns = evidence.get('compensations') or {}
+                if (patterns.get('trunk_lean') or {}).get('method') == 'image_shoulder_expansion_v3':
+                    definitions['trunk_lean'] = ('Shoulder-span growth', 'percent')
+                if (patterns.get('head_drop') or {}).get('method') == 'image_face_expansion_v4':
+                    definitions['head_drop'] = ('Additional face-span growth', 'percent')
         else:
             definitions.update({cid: (COMPENSATIONS[cid]["label"], "deg") for cid in rule["compensations"]})
         metrics = []
@@ -301,6 +334,7 @@ def testing_task_report(task, rubrics):
         step["measurements"] = metrics
         for criterion in step["criteria"]:
             measurement = (evidence.get("measurements") or {}).get(criterion["metric"]) or {}
+            criterion["valid_samples"] = int(number(measurement.get("samples")) or 0) if current else 0
             raw_series = measurement.get("series") if current else []
             series = []
             if isinstance(raw_series, list):
@@ -317,10 +351,21 @@ def testing_task_report(task, rubrics):
             criterion["statistic_source"] = source if source in {"target_median", "movement_median", "sample_proportion", "movement_maximum"} else None
             criterion["statistic_samples"] = number(measurement.get("statistic_samples")) if current else None
             criterion["peak_elapsed_ms"] = number(measurement.get("peak_elapsed_ms")) if current and source == "movement_maximum" else None
+        if tid in {"T2", "H1", "H3", "H4"}:
+            for check in step["compensations"]:
+                raw_check = (evidence.get("compensations") or {}).get(check["id"]) or {}
+                check.update({"unit": "deg",
+                              "eligible_ms": number(raw_check.get("eligible_ms")) if current else None,
+                              "max_value": number(raw_check.get("max_value")) if current else None,
+                              "max_streak_ms": number(raw_check.get("max_streak_ms")) if current else None})
         completion_only = step.get("scoring_method") == "target_completion"
         if completion_only:
+            if tid == "T1":
+                step["compensations"] = compensation_checks(raw, {**rule, "compensations": ["trunk_lean", "shoulder_hike"]})
+            elif tid == "T3":
+                step["compensations"] = compensation_checks(raw, {**rule, "compensations": ["trunk_lean", "shoulder_hike", "head_drop"]})
             step["calculation"] = {"completion_points": step["score"], "range_points": 0,
-                                   "detected_compensations": 0, "form_factor": 1}
+                                   "detected_compensations": sum(c["status"] == "detected" for c in step["compensations"]), "form_factor": 1}
         else:
             detections = sum(check["status"] == "detected" for check in step["compensations"])
             rom = (sum(rule["attainment"] for rule in step["criteria"]) / len(step["criteria"])
@@ -328,6 +373,17 @@ def testing_task_report(task, rubrics):
             step["calculation"] = {"completion_points": 20 if step["completed"] else 0,
                                    "range_points": round(80 * rom, 3) if rom is not None else None,
                                    "detected_compensations": detections, "form_factor": max(.4, 1 - .2 * detections)}
+            if tid == "T1":
+                # Keep step performance transparent; any confirmed compensation
+                # overrides the final Testing exercise score below.
+                step["calculation"]["form_factor"] = 1
+                step["score"] = (round(step["calculation"]["completion_points"] + step["calculation"]["range_points"], 1)
+                                 if step["score"] is not None and rom is not None else None)
+                if any(check["status"] == "not_measured" for check in step["compensations"]):
+                    step["score"] = None
+                    step["status"] = "not_measured"
+        if tid == "T3":
+            step["calculation"]["assistance_factor"] = step["assistance_factor"]
         adaptation = (value(raw, "metrics", {}) or {}).get("testing_reach")
         if tid == "T1" and isinstance(adaptation, Mapping) and adaptation.get("version") == "testing-reach-adaptation-1":
             # Testing-only engineering rubric. Keep original angle benchmarks;
@@ -358,13 +414,46 @@ def testing_task_report(task, rubrics):
                                   "learning_history": adaptation.get("learning_history") or []}
             if not valid and not completion_only:
                 step["status"] = "not_measured"
-    if any("adaptation" in step for step in result["steps"]):
+    if tid == "T1" or any("adaptation" in step for step in result["steps"]):
         measured = [step["score"] for step in result["steps"] if step["score"] is not None]
-        result["adaptation_applied"] = True
-        result["assisted"] = any(step.get("adaptation", {}).get("assisted") for step in result["steps"])
+        result["adaptation_applied"] = any("adaptation" in step for step in result["steps"])
+        if result["adaptation_applied"]:
+            result["assisted"] = any(step.get("adaptation", {}).get("assisted") for step in result["steps"])
         result["earned_score"] = round(sum(measured) / len(result["steps"]), 1) if measured else None
+        if result["assisted"] and not result["adaptation_applied"] and result["earned_score"] is not None:
+            result["earned_score"] = round(result["earned_score"] * .5, 1)
         result["score"] = result["earned_score"] if len(measured) == len(result["steps"]) else None
         result["measured_steps"] = len(measured)
+    if tid == "T1":
+        detected = [{"step_id": step["step_id"], "id": check["id"], "label": check["label"]}
+                    for step in result["steps"] for check in step["compensations"] if check["status"] == "detected"]
+        result["score_before_compensation"] = result["score"]
+        result["compensation_override"] = {"score": 15, "detected": detected} if detected else None
+        if detected:
+            # Explicit Testing rule: exactly 15 overall, even if the underlying
+            # average is lower or some other steps have incomplete evidence.
+            result["score"] = result["earned_score"] = 15
+            result["earned_module_points"] = round(15 / 100 * result["module_weight"], 2)
+    if tid == "T3":
+        # Testing-only whole-attempt rule. Angle/assistance-based step values
+        # remain diagnostic evidence; they no longer contribute to this total.
+        detected = [{"step_id": step["step_id"], "id": check["id"], "label": check["label"]}
+                    for step in result["steps"] for check in step["compensations"] if check["status"] == "detected"]
+        completed = bool(result["steps"]) and all(step["completed"] for step in result["steps"])
+        observed = all(check["status"] != "not_measured"
+                       for step in result["steps"] for check in step["compensations"])
+        if detected:
+            score, reason = 15, "compensation_detected"
+        elif not completed:
+            score, reason = 15, "incomplete"
+        elif not observed:
+            score, reason = None, "insufficient_evidence"
+        else:
+            score, reason = 100, "completed_without_compensation"
+        result.update(scoring_method="completion_compensation_v1", score_reason=reason,
+                      score=score, earned_score=score,
+                      earned_module_points=round(score / 100 * result["module_weight"], 2) if score is not None else None,
+                      compensation_override={"score": 15, "detected": detected} if detected else None)
     return {"version": VERSION, "task": result,
             "duration_ms": sum(step["duration_ms"] for step in result["steps"]),
             "completed_steps": sum(step["completed"] for step in result["steps"]),

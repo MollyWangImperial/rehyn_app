@@ -113,7 +113,7 @@ def test_partial_mouth_step_preserves_upper_limb_points_and_equal_task_shares():
 
     mouth["metrics"] = {"assisted": True}
     assisted = score_assessment([mouth], ASSESSMENT_RUBRICS)
-    assert assisted["tasks"][0]["earned_score"] == 37.5
+    assert assisted["tasks"][0]["earned_score"] == 50  # (50 + missing + 50 + 100) / 4
 
 
 def test_zero_measured_score_is_distinct_from_missing_evidence():

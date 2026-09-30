@@ -101,6 +101,15 @@ test('new detector does not flag the face cue just below 7 degrees', () => {
   assert.ok(result.cues.pelvisNormalizedFaceScale < 7);
 });
 
+test('pelvis-axis shoulder cue abstains when the span is unavailable, retaining independent face evidence',()=>{
+  const baseline=sample({shoulder_span_pelvis_axis:.3});
+  const missing=sample({shoulder_width_corrected:.6,shoulder_span_pelvis_axis:NaN});
+  const result=newForwardLeanEvidence(missing,baseline,{separateShoulderHike:true});
+  assert.equal(result.detected,false);
+  assert.ok(Number.isNaN(result.cues.pelvisNormalizedShoulderScale));
+  assert.equal(newForwardLeanEvidence({...missing,ear_width:.1},baseline,{separateShoulderHike:true}).detected,true);
+});
+
 test('new detector does not require or use depth and torso-shortening cues', () => {
   const baseline = sample();
   const depthOnly = sample({trunk_depth_tilt: 45, torso_length_corrected: 0.25});

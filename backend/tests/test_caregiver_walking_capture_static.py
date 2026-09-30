@@ -121,7 +121,8 @@ def test_browser_gait_evidence_is_body_normalized_and_bound_to_the_uploaded_vide
     assert 'camera_motion_handling:"body_centric_2d_browser"' in source
     assert 'coordinate_frame:"pelvis_centered_leg_normalized_2d"' in source
     assert 'uses_3d_reconstruction:false' in source
-    assert 'source_video_id:String(cloudRecord.id)' in source
+    assert 'const walkingEvidenceId = LOCAL_PREVIEW_MODE ? "local-preview-walking" : cloudRecord?.id;' in source
+    assert 'source_video_id:String(walkingEvidenceId)' in source
     assert 'metrics.gait_2d_evidence = gaitEvidence' in source
 
 

@@ -10,6 +10,7 @@ from pymongo import ReturnDocument
 from bson import ObjectId
 from bson.errors import InvalidId
 import os
+from backend.local_assessment_preview import is_local_assessment_preview
 import io
 import base64
 import logging
@@ -2662,6 +2663,17 @@ async def get_tasks(
     library_test: bool = False,
 ):
     selected = ASSESSMENT_PACKAGES.get(package, ASSESSMENT_PACKAGES["upper_limb"])
+    if is_local_assessment_preview(request):
+        requested = [item.strip() for item in task_ids.split(",") if item.strip()] if task_ids is not None else None
+        if library_test and (requested is None or len(requested) != 1):
+            raise HTTPException(status_code=422, detail="Library testing requires exactly one assessment task")
+        selected_ids = _validated_assigned_task_ids(selected["id"], requested)
+        return {
+            "tasks": [task for task in selected["tasks"] if task["id"] in selected_ids],
+            "voice_id": TTS_VOICE, "package_id": selected["id"],
+            "package_title": selected["title"], "package_subtitle": selected["subtitle"],
+            "assigned_task_ids": selected_ids, "packages": [], "preview_only": True,
+        }
     user = await _user_from_header(dict(request.headers))
     if not user:
         raise HTTPException(status_code=401, detail="Sign in required")
@@ -3939,6 +3951,35 @@ async def score_gait_2d_for_testing(payload: Gait2DTestScoreRequest, request: Re
     }
 
 
+@api_router.post("/assessment/preview-results")
+async def preview_assessment_results(payload: AssessmentSubmit, request: Request):
+    """Score this loopback preview only; never read or create a patient record."""
+    if not is_local_assessment_preview(request):
+        raise HTTPException(status_code=403, detail="Local assessment preview is not enabled")
+    assigned = _validated_assigned_task_ids(payload.assessment_package, payload.assigned_task_ids)
+    submitted = [task.task_id for task in payload.task_results]
+    if len(submitted) != len(set(submitted)) or set(submitted) != set(assigned):
+        raise HTTPException(status_code=422, detail="Results must match the selected preview tasks")
+    for task in payload.task_results:
+        step_ids = [step.step_id for step in task.steps]
+        allowed_steps = {step["id"] for step in ASSESSMENT_RUBRICS[task.task_id]["steps"]}
+        if len(step_ids) != len(set(step_ids)) or not set(step_ids).issubset(allowed_steps):
+            raise HTTPException(status_code=422, detail="Invalid preview task steps")
+        task.metrics.pop("gait_analysis", None)
+        evidence = task.metrics.pop("gait_2d_evidence", None)
+        if task.task_id == "L6" and not task.metrics.get("walking_skipped"):
+            stage = _validated_browser_gait_evidence(evidence, "local-preview-walking", task.duration_ms)
+            if stage:
+                task.metrics["gait_analysis"] = score_gait_features(stage)
+    return {
+        "preview_only": True,
+        "saved_to_assessment": False,
+        "assessment_package": payload.assessment_package,
+        "task_results": [task.model_dump() for task in payload.task_results],
+        "metrics": {"task_quality": score_assessment(payload.task_results, ASSESSMENT_RUBRICS, assigned)},
+    }
+
+
 @api_router.post("/assessment/submit", response_model=Assessment)
 async def submit_assessment(payload: AssessmentSubmit, request: Request):
     user = await _user_from_header(dict(request.headers))
@@ -5177,12 +5218,13 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
   #top .dot.active{background:#E18E6D;transform:scale(1.3)}
   #top .dot.done{background:#4A7856}
   #top .label{font-size:14px;font-weight:600;opacity:0.95}
-  #exitBtn{background:rgba(255,255,255,0.18);border:none;color:#fff;padding:8px 12px;border-radius:16px;font-weight:600;font-size:13px;pointer-events:auto;cursor:pointer}
+  #exitBtn,#instructionsToggle{background:rgba(255,255,255,0.18);border:none;color:#fff;padding:8px 12px;border-radius:16px;font-weight:600;font-size:13px;pointer-events:auto;cursor:pointer}
+  #instructionsToggle{display:none}
+  body.step-active #instructionsToggle{display:inline-flex}
   #bottom{background:rgba(28,32,29,0.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:24px;padding:16px 18px;pointer-events:auto;transition:opacity .4s ease, transform .4s ease;will-change:opacity,transform}
-  /* While voice is playing, show the instruction card. Once voice ends, fade
-     it to a compact, semi-transparent badge so the patient can see the target circle clearly. */
-  body.step-active #bottom{opacity:.30;transform:scale(.92) translateY(8px)}
-  body.step-active #bottom:hover,body.step-active #bottom:focus-within{opacity:.95;transform:none}
+  /* Keep the target area clear during movement. Captions remain available
+     through the compact Instructions control in the top bar. */
+  body.step-active:not(.instructions-open) #bottom{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(12px)}
   #stepTitle{font-size:14px;color:#D9E5DC;font-weight:600;margin-bottom:6px}
   #caption{font-size:18px;font-weight:600;line-height:1.35}
   #voiceRow{display:flex;align-items:center;gap:10px;margin-top:10px;opacity:0.85}
@@ -5197,9 +5239,18 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
   #voiceText.voiceRetry{pointer-events:auto;cursor:pointer;color:#fff;text-decoration:underline;text-underline-offset:3px;font-weight:750}
   #skipBtn{margin-top:12px;background:#4A7856;color:#fff;border:none;width:100%;padding:14px;border-radius:16px;font-weight:700;font-size:16px;cursor:pointer}
   #overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0c100eee;text-align:center;padding:24px;flex-direction:column;gap:16px;pointer-events:auto;z-index:10}
-  #overlay h1{font-size:22px;font-weight:700}
-  #overlay p{font-size:15px;color:#bcc2ba;line-height:1.5}
-  #overlay button{background:#4A7856;color:#fff;border:none;padding:14px 28px;border-radius:16px;font-weight:700;font-size:16px}
+  #overlay{gap:20px}
+  #overlay h1{font-size:22px;font-weight:700;animation:readyRise .6s cubic-bezier(.2,.7,.2,1) both}
+  #overlay p{font-size:13px;color:#98a39b;line-height:18px;max-width:440px;animation:readyRise .6s .9s cubic-bezier(.2,.7,.2,1) both}
+  #overlay button{background:#4A7856;color:#fff;border:none;padding:14px 28px;border-radius:18px;font-weight:700;font-size:18px;display:inline-flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;animation:readyRise .6s .45s cubic-bezier(.2,.7,.2,1) backwards,readyBeckon 2.4s 1.3s ease-out infinite;transition:transform .18s ease,background-color .18s ease}
+  #overlay button:hover{transform:translateY(-2px);background-color:#5a8f68}
+  #overlay button:disabled,#overlay button[aria-busy="true"]{animation:readyRise .6s .45s cubic-bezier(.2,.7,.2,1) backwards;transform:none;background:#4A7856;cursor:progress}
+  #overlay button svg{flex:0 0 auto;transition:transform .18s ease}
+  #overlay button:hover svg{transform:translateX(4px)}
+  #overlay button[data-module-failed="1"]+p{color:#E9B79F;font-size:14px}
+  @keyframes readyRise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  @keyframes readyBeckon{0%{box-shadow:0 0 0 0 rgba(127,229,163,.55)}70%{box-shadow:0 0 0 18px rgba(127,229,163,0)}100%{box-shadow:0 0 0 0 rgba(127,229,163,0)}}
+  @media (prefers-reduced-motion:reduce){#overlay h1,#overlay p,#overlay button{animation:none}}
   #calibrationOverlay{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;background:linear-gradient(180deg,rgba(12,16,14,.62),rgba(12,16,14,.12));padding:calc(16px + env(safe-area-inset-top,0px)) 16px 16px;pointer-events:auto;z-index:12}
   #calibrationOverlay .calibrationPanel{width:min(520px,100%);background:rgba(253,253,253,.96);color:#1C201D;border-radius:8px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.30);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
   #calibrationOverlay h2{font-size:22px;line-height:1.2;margin-bottom:6px}
@@ -5209,13 +5260,55 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
   .calibrationCheck .statusDot{display:grid;place-items:center;width:22px;height:22px;flex:0 0 22px;border-radius:50%;background:#E8ECE8;color:#69716B;font-size:13px}
   .calibrationCheck.done{color:#285C3A}
   .calibrationCheck.done .statusDot{background:#D9E5DC;color:#285C3A}
+  #calibrationQuality{display:grid;gap:8px;border-top:1px solid #D9E5DC;padding-top:9px}
+  #calibrationQuality .calibrationCheck{align-items:flex-start}
+  #calibrationQuality .qualityCheckBody{flex:1;min-width:0}
+  #calibrationQuality .qualityCheckHeading{display:flex;justify-content:space-between;gap:8px}
+  #calibrationQuality .qualityCheckState{font-size:12px;white-space:nowrap}
+  #calibrationQuality .qualityCheckDetail{display:block;font-size:12px;font-weight:400;line-height:1.35;color:#49504B;margin-top:2px;overflow-wrap:anywhere}
+  #calibrationQuality [data-state="blocked"] .qualityCheckState{color:#A33724}
+  #calibrationQuality [data-state="blocked"] .statusDot{background:#F8E7E2;color:#A33724}
+  #calibrationOverlay.testingReachCalibration .calibrationPanel{max-height:calc(100% - 16px);overflow-y:auto}
   #calibrationProgress{height:6px;background:#E4E9E5;border-radius:3px;overflow:hidden;margin-bottom:14px}
   #calibrationProgressFill{height:100%;width:0;background:#4A7856;transition:width .2s ease}
   #calibrationAutoStatus{width:100%;border-radius:8px;padding:13px 16px;background:#E8ECE8;color:#56605A;font-size:15px;font-weight:750;text-align:center}
   #calibrationAutoStatus.ready{background:#4A7856;color:#fff}
+  /* Patient calibration: one continuous progress ring and one completion check.
+     The testing panels keep the original checklist via .testingReachCalibration. */
+  #calibrationRing{display:none}
+  #calibrationOverlay:not(.testingReachCalibration){align-items:center;background:radial-gradient(circle at 50% 44%,rgba(12,16,14,.22) 0%,rgba(12,16,14,.5) 42%,rgba(12,16,14,.8) 100%);padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px))}
+  #calibrationOverlay:not(.testingReachCalibration) .calibrationPanel{width:min(560px,100%);background:transparent;color:#fdfdfd;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0;display:flex;flex-direction:column;align-items:center;text-align:center}
+  #calibrationOverlay:not(.testingReachCalibration) h2{order:1;font-size:clamp(28px,4.2vw,42px);font-weight:750;line-height:1.2;letter-spacing:-.02em;text-transform:none;text-wrap:balance;color:#F3FFF7;margin:0 0 24px;max-width:540px;text-shadow:0 2px 12px rgba(0,0,0,.9);transform-origin:center;animation:calTitleBreathe 3.6s ease-in-out infinite}
+  #calibrationOverlay:not(.testingReachCalibration):has(#calibrationRing.complete) h2{animation:none;color:#B7FFD0}
+  #calibrationOverlay:not(.testingReachCalibration) #calibrationRing{display:block;order:2}
+  #calibrationOverlay:not(.testingReachCalibration) .calibrationLead{display:none}
+  #calibrationOverlay:not(.testingReachCalibration) #calibrationChecklist,#calibrationOverlay:not(.testingReachCalibration) #calibrationProgress{position:absolute;width:1px;height:1px;margin:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  #calibrationOverlay:not(.testingReachCalibration) #calibrationAutoStatus{display:none}
+  #calibrationRing{--calRingSize:min(72vw,38vh,320px);position:relative;width:var(--calRingSize);height:var(--calRingSize)}
+  #calibrationRing::before{content:"";position:absolute;inset:9%;border:1px solid rgba(127,229,163,.18);border-radius:50%;box-shadow:0 0 25px rgba(127,229,163,.13),inset 0 0 25px rgba(127,229,163,.08);animation:calAuraBreathe 3.6s ease-in-out infinite;pointer-events:none}
+  #calibrationRing::after{content:"";position:absolute;inset:18%;border-radius:50%;background:radial-gradient(circle,rgba(127,229,163,.12),rgba(127,229,163,.04) 55%,transparent 72%);animation:calCoreBreathe 3.6s ease-in-out infinite;pointer-events:none}
+  #calibrationRing .calRingSvg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;z-index:1;transform-origin:center;animation:calRingBreathe 3.6s ease-in-out infinite}
+  #calibrationRing .calRingTrack{fill:none;stroke:rgba(211,248,225,.2);stroke-width:12}
+  #calibrationRing .calRingFill{fill:none;stroke:url(#calProgressGradient);stroke-width:12;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;transition:stroke-dashoffset .8s linear;filter:drop-shadow(0 0 5px rgba(127,229,163,.55))}
+  #calibrationRingTip{transform-origin:200px 200px;transform:rotate(-90deg);transition:transform .8s linear,opacity .25s ease}
+  #calibrationRingTip circle{fill:#E5FFEF;filter:drop-shadow(0 0 7px #7FE5A3)}
+  #calibrationRing.tracking::before{border-color:rgba(127,229,163,.4);animation-duration:2.6s}
+  #calibrationRing.tracking .calRingFill{filter:drop-shadow(0 0 9px rgba(127,229,163,.8))}
+  #calibrationRing.complete::before{animation:calAuraComplete 1.2s .8s ease-out both}
+  #calibrationRing.complete::after{animation:none;opacity:.65}
+  #calibrationRing.complete #calibrationRingTip{opacity:0;transition-delay:0s,.8s}
+  #calibrationRing .calCenterCheck{fill:none;stroke:#7FE5A3;stroke-width:18;stroke-linecap:round;stroke-linejoin:round;opacity:0;transform:scale(.85);transform-origin:200px 200px;transition:opacity .2s ease,transform .2s ease}
+  #calibrationRing.complete .calCenterCheck{opacity:1;transform:scale(1);transition-delay:.8s}
+  #calibrationRing.complete .calRingSvg{animation:calCompleteGlow 1.2s .8s ease-out both}
+  @keyframes calCompleteGlow{0%{filter:drop-shadow(0 0 0 rgba(127,229,163,0))}40%{filter:drop-shadow(0 0 12px rgba(127,229,163,.95)) drop-shadow(0 0 28px rgba(127,229,163,.6))}100%{filter:drop-shadow(0 0 8px rgba(127,229,163,.7)) drop-shadow(0 0 18px rgba(127,229,163,.35))}}
+  @keyframes calRingBreathe{0%,100%{transform:scale(.99)}50%{transform:scale(1.025)}}
+  @keyframes calTitleBreathe{0%,100%{transform:scale(1);opacity:.92;text-shadow:0 2px 12px rgba(0,0,0,.9),0 0 8px rgba(127,229,163,.08)}50%{transform:scale(1.025);opacity:1;text-shadow:0 2px 12px rgba(0,0,0,.9),0 0 22px rgba(127,229,163,.5)}}
+  @keyframes calAuraBreathe{0%,100%{transform:scale(.98);opacity:.35}50%{transform:scale(1.075);opacity:.85}}
+  @keyframes calCoreBreathe{0%,100%{transform:scale(.92);opacity:.45}50%{transform:scale(1.06);opacity:1}}
+  @keyframes calAuraComplete{0%{transform:scale(1);opacity:.75}100%{transform:scale(1.3);opacity:0}}
+  @media (prefers-reduced-motion:reduce){#calibrationOverlay h2,#calibrationRing *,#calibrationRing::before,#calibrationRing::after{transition:none!important;animation:none!important}#calibrationRing.complete .calRingSvg{filter:drop-shadow(0 0 10px rgba(127,229,163,.65))}#calibrationRing.complete::before{opacity:0}}
   #walkingCapture{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(12,16,14,.94);padding:20px;pointer-events:auto;z-index:13}
   #walkingCapture .walkingCard{width:min(560px,100%);max-height:92vh;overflow:auto;background:#FDFDFD;color:#1C201D;border-radius:8px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.38)}
-  #walkingCapture .walkingEyebrow{font-size:13px;font-weight:800;color:#4A7856;text-transform:uppercase;margin-bottom:8px}
   #walkingCapture h2{font-size:24px;line-height:1.2;margin-bottom:10px}
   #walkingCapture p{font-size:15px;line-height:1.45;color:#414843}
   #walkingCapture ul{padding-left:20px;margin:14px 0}
@@ -5227,7 +5320,6 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
   #walkingVideoDropZone.dragover{border-color:#315D3D;background:#E6F0E8;box-shadow:0 0 0 3px rgba(74,120,86,.16)}
   #walkingVideoDropZone.busy{opacity:.65;cursor:wait}
   .walkingDropIcon{width:42px;height:42px;margin:0 auto 8px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#D9E5DC;color:#315D3D;font-size:25px;font-weight:800;line-height:1}
-  .walkingDropTitle{font-size:16px;font-weight:800;color:#1C201D}
   .walkingDropHint{font-size:13px;color:#59615B;margin:4px 0 12px}
   #walkingPickerButton{position:relative;width:100%}
   #walkingChooseVideoBtn{pointer-events:none}
@@ -5240,6 +5332,43 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
   #walkingCaptureStatus{margin-top:12px;padding:11px 12px;border-radius:8px;background:#EEF0ED;color:#49504B;font-size:14px;line-height:1.4}
   #walkingCaptureStatus.good{background:#D9E5DC;color:#285C3A;font-weight:700}
   #walkingCaptureStatus.warn{background:#FFF0E6;color:#7A351E;font-weight:700}
+  /* Walking card: direct instruction, front-view demonstration, Upload / Record tabs. */
+  #walkingCapture{background:rgba(12,16,14,.8)}
+  #walkingCapture .walkingCard{width:min(620px,100%);border-radius:22px;padding:24px;animation:wkPop .6s cubic-bezier(.2,.7,.2,1) both}
+  #walkingCapture h2{font-size:26px;line-height:32px;font-weight:700;margin-bottom:8px}
+  #walkingCapture #walkingCaptureLead{line-height:22px;margin-bottom:12px}
+  #walkingCapture:not(.walkingTestMode) #walkingCaptureGuidance{display:none}
+  #walkingScene{position:relative;width:100%;border-radius:14px;background:#eef4ef;overflow:hidden;margin:0 0 16px}
+  #walkingScene svg{display:block;width:100%;height:auto}
+  #walkingModeTabs{display:flex;border-radius:12px;background:#e8ece8;padding:4px;margin:0 0 16px}
+  #walkingCapture #walkingModeTabs button{flex:1;width:auto;height:36px;padding:0 8px;border:none;border-radius:9px;background:transparent;color:#56605a;font-size:14px;font-weight:600;box-shadow:none}
+  #walkingCapture #walkingModeTabs button.selected{background:#fff;color:#1c201d;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  #walkingCapture.walkingTestMode #walkingScene,#walkingCapture.walkingTestMode #walkingModeTabs{display:none}
+  #walkingVideoDropZone{border-radius:14px;padding:14px}
+  .walkingDropIcon{display:none}
+  #walkingCapture #walkingPickerButton{width:200px;max-width:100%;margin:0 auto}
+  #walkingCapture #walkingChooseVideoBtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:52px;padding:0 20px;border-radius:12px;animation:wkBeckon 2.4s 1.2s ease-out infinite}
+  #walkingCapture #walkingChooseVideoBtn:disabled{animation:none}
+  #walkingCapture #walkingChooseVideoBtn svg{width:18px;height:18px;flex:0 0 auto}
+  #walkingCapture #walkingSkipBtn{display:block;width:auto;margin:14px auto 0;padding:8px 12px;background:transparent;border:none;color:#56605a;font-size:14px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
+  #walkingCapture #walkingSkipBtn:disabled{background:transparent;border:none;color:#9aa39c}
+  #walkingCaptureStatus{margin-top:14px;text-align:center}
+  #walkingScene .wkApproach{transform:translate(196px,187px) scale(.92);animation:wkApproach 5.6s ease-in-out infinite}
+  #walkingScene .wkPhoneApproach{transform:translate(430px,186px) scale(.72);animation:wkPhoneApproach 5.6s ease-in-out infinite}
+  #walkingScene .wkStepLeft{transform-origin:-11px -66px;animation:wkStep 1.4s ease-in-out infinite}
+  #walkingScene .wkStepRight{transform-origin:11px -66px;animation:wkStep 1.4s -.7s ease-in-out infinite}
+  #walkingScene .wkSwing{transform-origin:-22px -112px;animation:wkSwing 1.4s ease-in-out infinite}
+  #walkingScene .wkToward{animation:wkToward 2.2s ease-in-out infinite}
+  #walkingScene .wkToward.second{animation-delay:.4s}
+  #walkingScene .wkToward.third{animation-delay:.8s}
+  @keyframes wkPop{0%{opacity:0;transform:scale(.94) translateY(12px)}100%{opacity:1;transform:none}}
+  @keyframes wkBeckon{0%{box-shadow:0 0 0 0 rgba(74,120,86,.45)}70%{box-shadow:0 0 0 14px rgba(74,120,86,0)}100%{box-shadow:0 0 0 0 rgba(74,120,86,0)}}
+  @keyframes wkApproach{0%,10%{transform:translate(196px,161px) scale(.68);opacity:1}78%,88%{transform:translate(196px,194px) scale(1);opacity:1}94%{transform:translate(196px,194px) scale(1);opacity:0}95%{transform:translate(196px,161px) scale(.68);opacity:0}100%{transform:translate(196px,161px) scale(.68);opacity:1}}
+  @keyframes wkPhoneApproach{0%,10%{transform:translate(430px,174px) scale(.52);opacity:1}78%,88%{transform:translate(430px,186px) scale(.74);opacity:1}94%{transform:translate(430px,186px) scale(.74);opacity:0}95%{transform:translate(430px,174px) scale(.52);opacity:0}100%{transform:translate(430px,174px) scale(.52);opacity:1}}
+  @keyframes wkStep{0%,100%{transform:translateY(0) scaleY(1)}50%{transform:translateY(-3px) scaleY(.91)}}
+  @keyframes wkSwing{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(5deg)}}
+  @keyframes wkToward{0%,100%{opacity:.2}50%{opacity:.85}}
+  @media (prefers-reduced-motion:reduce){#walkingCapture *{animation:none!important}}
   body.walking-camera-unmirrored #cameraFrame video,body.walking-camera-unmirrored #cameraFrame canvas{transform:none}
   #advancedMarkerGate{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0c100ef5;padding:20px;pointer-events:auto;z-index:11}
   #advancedMarkerGate .gateCard{width:min(520px,100%);max-height:92vh;overflow:auto;background:#FDFDFD;color:#1C201D;border-radius:24px;padding:22px;text-align:left;box-shadow:0 24px 80px rgba(0,0,0,.35)}
@@ -5288,33 +5417,51 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
   <div id="ui">
     <div id="top">
       <button id="exitBtn" data-testid="assessment-exit">Exit</button>
+      <button id="instructionsToggle" type="button" aria-controls="bottom" aria-expanded="false">Instructions</button>
       <div class="dots" id="dots"></div>
       <div class="label" id="taskLabel">T1</div>
     </div>
     <div id="bottom">
-      <div id="stepTitle">Task 1 of 7</div>
+      <div id="stepTitle" class="hidden">Task 1 of 7</div>
       <div id="caption">Preparing…</div>
-      <div id="voiceRow">
+      <div id="voiceRow" class="hidden">
         <div id="voiceWave"><span></span><span></span><span></span><span></span></div>
         <div id="voiceText">Listening to instructions…</div>
       </div>
-      <button id="skipBtn" data-testid="assessment-skip">Skip step</button>
+      <button id="skipBtn" class="hidden" data-testid="assessment-skip">Skip step</button>
     </div>
   </div>
   <div id="overlay">
     <h1>Ready to begin?</h1>
-    <p>We will guide you through the movement tasks selected from your readiness answers. Move into the camera view, then follow the setup guidance.</p>
-    <button id="startBtn" data-testid="assessment-start">Set Up Camera</button>
+    <button id="startBtn" data-testid="assessment-start">Yes, I'm ready<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+    <p class="hidden" role="status"></p>
   </div>
   <div id="calibrationOverlay" class="hidden" data-testid="assessment-calibration">
     <div class="calibrationPanel">
       <h2 id="calibrationTitle">Let us find your seated position</h2>
       <p class="calibrationLead" id="calibrationLead">Sit still with your affected hand resting on your lap. Keep your face, shoulders, affected arm, hips, and knees inside the camera view.</p>
+      <div id="calibrationRing" aria-hidden="true">
+        <svg class="calRingSvg" viewBox="0 0 400 400">
+          <defs><linearGradient id="calProgressGradient" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#45C78D"></stop><stop offset=".55" stop-color="#7FE5A3"></stop><stop offset="1" stop-color="#D5FFE4"></stop></linearGradient></defs>
+          <circle class="calRingTrack" cx="200" cy="200" r="150"></circle>
+          <circle id="calibrationRingFill" class="calRingFill" cx="200" cy="200" r="150" pathLength="100" transform="rotate(-90 200 200)"></circle>
+          <g id="calibrationRingTip"><circle cx="350" cy="200" r="7"></circle></g>
+          <path class="calCenterCheck" d="M137 201l43 43 83-88"></path>
+        </svg>
+      </div>
       <div id="calibrationChecklist">
         <div class="calibrationCheck" id="calibrationCamera"><span class="statusDot">1</span><span>Camera is ready</span></div>
         <div class="calibrationCheck" id="calibrationArm"><span class="statusDot">2</span><span>Face, shoulders, and affected arm are visible</span></div>
         <div class="calibrationCheck" id="calibrationSeat"><span class="statusDot">3</span><span>Affected hand and part of your lap are visible</span></div>
         <div class="calibrationCheck" id="calibrationLap"><span class="statusDot">4</span><span>Hold still while your lap target is located</span></div>
+        <div class="hidden" id="calibrationQuality">
+          <div class="calibrationCheck" data-quality-check="lighting" data-check-number="5"><span class="statusDot">5</span><div class="qualityCheckBody"><div class="qualityCheckHeading"><span>Lighting</span><span class="qualityCheckState">Waiting</span></div><span class="qualityCheckDetail"></span></div></div>
+          <div class="calibrationCheck" data-quality-check="contrast" data-check-number="6"><span class="statusDot">6</span><div class="qualityCheckBody"><div class="qualityCheckHeading"><span>Clothing/background contrast</span><span class="qualityCheckState">Waiting</span></div><span class="qualityCheckDetail"></span></div></div>
+          <div class="calibrationCheck" data-quality-check="landmarks" data-check-number="7"><span class="statusDot">7</span><div class="qualityCheckBody"><div class="qualityCheckHeading"><span>Grading landmark confidence</span><span class="qualityCheckState">Waiting</span></div><span class="qualityCheckDetail"></span></div></div>
+          <div class="calibrationCheck" data-quality-check="angles" data-check-number="8"><span class="statusDot">8</span><div class="qualityCheckBody"><div class="qualityCheckHeading"><span>Angle measurements</span><span class="qualityCheckState">Waiting</span></div><span class="qualityCheckDetail"></span></div></div>
+          <div class="calibrationCheck" data-quality-check="stability" data-check-number="9"><span class="statusDot">9</span><div class="qualityCheckBody"><div class="qualityCheckHeading"><span>Two-second tracking stability</span><span class="qualityCheckState">Waiting</span></div><span class="qualityCheckDetail"></span></div></div>
+          <div class="calibrationCheck" data-quality-check="baseline" data-check-number="10"><span class="statusDot">10</span><div class="qualityCheckBody"><div class="qualityCheckHeading"><span>Upright posture reference</span><span class="qualityCheckState">Waiting</span></div><span class="qualityCheckDetail"></span></div></div>
+        </div>
       </div>
       <div id="calibrationProgress"><div id="calibrationProgressFill"></div></div>
       <div id="calibrationAutoStatus" role="status" data-testid="calibration-auto-status">Keep still. Assessment will start automatically.</div>
@@ -5322,9 +5469,60 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
   </div>
   <div id="walkingCapture" class="hidden" data-testid="walking-capture">
     <div class="walkingCard">
-      <div id="walkingCaptureEyebrow" class="walkingEyebrow">Final walking record</div>
-      <h2 id="walkingCaptureTitle">Upload a short frontal walking video</h2>
-      <p id="walkingCaptureLead">Ask a carer or family member to record from the front while you walk toward the camera at your usual comfortable pace.</p>
+      <h2 id="walkingCaptureTitle">Walk toward the camera</h2>
+      <p id="walkingCaptureLead">Ask someone to film you from the front while you walk toward the camera at your usual pace, with your usual walking aid.</p>
+      <div id="walkingScene" role="img" aria-label="A person walks forward toward a stationary camera. The phone shows their whole body from the front.">
+        <svg viewBox="0 0 572 222" aria-hidden="true">
+          <defs>
+            <linearGradient id="wkRoom" x2="0" y2="1"><stop stop-color="#F4F7F0"/><stop offset="1" stop-color="#DFECE2"/></linearGradient>
+            <clipPath id="wkPhoneScreen"><rect x="386" y="34" width="88" height="159" rx="10"/></clipPath>
+            <g id="wkPerson">
+              <ellipse cx="3" cy="2" rx="35" ry="5" fill="#2A503C" opacity=".12"/>
+              <g class="wkStepLeft"><path d="M-21-70h21l-4 61h-17z" fill="#344E57"/><path d="M-21-13h17v10q-2 5-21 3l-1-5z" fill="#FCFDF6" stroke="#526565" stroke-width="1.5"/></g>
+              <g class="wkStepRight"><path d="M1-70h21l-1 61H5z" fill="#425F67"/><path d="M5-13h17l5 10q-1 5-21 3z" fill="#FCFDF6" stroke="#526565" stroke-width="1.5"/></g>
+              <g class="wkSwing"><path d="M-22-115q-9 11-10 29l-1 13" fill="none" stroke="#709F88" stroke-width="14" stroke-linecap="round"/><path d="M-33-76v10" stroke="#BF8969" stroke-width="10" stroke-linecap="round"/></g>
+              <path d="M22-115q8 16 9 24l8 15" fill="none" stroke="#709F88" stroke-width="14" stroke-linecap="round"/>
+              <path d="M34-73q8-8 11-1l2 74" fill="none" stroke="#B3844F" stroke-width="4" stroke-linecap="round"/><path d="M43 1h8" stroke="#425649" stroke-width="4" stroke-linecap="round"/>
+              <path d="M35-80l5 7" stroke="#BF8969" stroke-width="10" stroke-linecap="round"/>
+              <path d="M-11-127q-14 1-16 15l5 46q22 7 44 0l5-46q-2-14-16-15z" fill="#83B299"/>
+              <path d="M-10-128v9q10 11 20 0v-9" fill="#BF8969"/>
+              <path d="M-10-121l10 9 10-9" fill="none" stroke="#CDE4D4" stroke-width="2.5"/>
+              <ellipse cy="-145" rx="18" ry="22" fill="#C89575"/>
+              <path d="M-18-145q-6-24 15-26 22-2 22 26l-6-12q-12 6-23-1z" fill="#5C665E"/>
+              <path d="M-17-153l1 14M17-153l-1 14" stroke="#CBD0BF" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="-6" cy="-145" r="1.6" fill="#34463A"/><circle cx="6" cy="-145" r="1.6" fill="#34463A"/>
+              <path d="M-5-135q5 4 10 0" fill="none" stroke="#805744" stroke-width="1.8" stroke-linecap="round"/>
+            </g>
+          </defs>
+          <rect width="572" height="222" fill="url(#wkRoom)"/>
+          <path d="M0 134h572v88H0z" fill="#D8E5DA"/>
+          <path d="M159 134L102 222M229 134l58 88" fill="none" stroke="#C2D5C7" stroke-width="2"/>
+          <path d="M136 222l35-87h47l36 87" fill="#F1F5EB" opacity=".65"/>
+          <g transform="translate(56 97)"><path d="M-13 20h29l-4 24H-9z" fill="#D1BBA0"/><path d="M1 21V-24M1 4q-23-2-20-21Q0-15 1 4M1-8q20-1 19-20Q2-24 1-8" fill="#83A68C" stroke="#729A7E" stroke-width="2"/></g>
+          <g fill="none" stroke="#78A68B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <path class="wkToward" d="M188 187l8 5 8-5"/><path class="wkToward second" d="M185 198l11 6 11-6"/><path class="wkToward third" d="M182 210l14 7 14-7"/>
+          </g>
+          <g class="wkApproach"><use href="#wkPerson"/></g>
+          <path d="M312 113h29m-6-6 7 6-7 6" fill="none" stroke="#72977F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M473 156q17-7 22 8l7 29 23 29h-62l-15-35z" fill="#C89575"/>
+          <path d="M481 192l18-9 36 39h-65z" fill="#779AAB"/>
+          <rect x="376" y="21" width="108" height="184" rx="18" fill="#294B3B"/>
+          <rect x="382" y="27" width="96" height="172" rx="13" fill="#FDFEF8"/>
+          <g clip-path="url(#wkPhoneScreen)">
+            <rect x="386" y="34" width="88" height="159" fill="#E6EFE4"/>
+            <path d="M386 151h88v42h-88z" fill="#D1E0D2"/>
+            <g class="wkPhoneApproach"><use href="#wkPerson"/></g>
+          </g>
+          <path d="M416 30h28" stroke="#294B3B" stroke-width="4" stroke-linecap="round"/>
+          <path d="M395 62v-9h9m52 0h9v9m0 112v9h-9m-52 0h-9v-9" fill="none" stroke="#709A7E" stroke-width="2" stroke-linecap="round"/>
+          <path d="M481 167q-13-7-15 4l4 15" fill="#C89575" stroke="#B58364" stroke-width="1.5"/>
+          <text x="430" y="216" text-anchor="middle" fill="#456653" font-family="sans-serif" font-size="11" font-weight="600">Camera view</text>
+        </svg>
+      </div>
+      <div id="walkingModeTabs" role="tablist" aria-label="How to add the walking video">
+        <button type="button" role="tab" data-walking-mode="upload" class="selected" aria-selected="true">Upload a video</button>
+        <button type="button" role="tab" data-walking-mode="record" aria-selected="false">Record now</button>
+      </div>
       <ul id="walkingCaptureGuidance">
         <li>A short video is fine. Keep the patient's whole body and usual walking aid visible when possible.</li>
         <li>A fixed camera is best. If the route does not fit, move smoothly from a safe position beside the path; do not walk backward in front of the patient.</li>
@@ -5334,10 +5532,8 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
       <div id="walkingDesktopActions" class="hidden" data-testid="walking-desktop-actions">
         <div id="walkingVideoDropZone" data-testid="walking-video-drop-zone">
           <div class="walkingDropIcon" aria-hidden="true">&#8593;</div>
-          <div class="walkingDropTitle">Drag your frontal walking video here</div>
-          <div class="walkingDropHint">or choose or record a short video on this device</div>
           <div id="walkingPickerButton">
-            <button id="walkingChooseVideoBtn" type="button" tabindex="-1" data-testid="walking-choose-video">Choose or record walking video</button>
+            <button id="walkingChooseVideoBtn" type="button" tabindex="-1" data-testid="walking-choose-video"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"></path></svg><span id="walkingChooseVideoLabel">Choose video</span></button>
             <input id="walkingVideoInput" type="file" accept="video/*" aria-label="Choose walking video" data-testid="walking-video-input" />
           </div>
         </div>
@@ -5347,7 +5543,7 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
       </div>
       <button id="walkingProceedUnconfirmedBtn" class="hidden" type="button" data-testid="walking-proceed-identity-unconfirmed">Use video and mark for review</button>
       <button id="walkingSkipBtn" type="button" data-testid="walking-skip">Skip walking for now</button>
-      <div id="walkingCaptureStatus" role="status">Preparing the walking capture...</div>
+      <div id="walkingCaptureStatus" class="hidden" role="status"></div>
       <video id="walkingReviewVideo" class="hidden" playsinline muted preload="metadata"></video>
     </div>
   </div>
@@ -5390,8 +5586,12 @@ POSE_RUNNER_HTML = r"""<!DOCTYPE html>
   </div>
   <div id="celebrate" class="hidden">
     <div class="star">&#11088;</div>
-    <div class="next" id="celebrateLabel">Task 1 complete</div>
+    <div class="celebrateMark" aria-hidden="true">
+      <svg class="celebrateRipples" viewBox="0 0 400 400"><circle class="celebrateRipple" cx="200" cy="200" r="72"></circle><circle class="celebrateRipple celebrateRipple2" cx="200" cy="200" r="72"></circle></svg>
+      <div class="celebrateTick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+    </div>
     <h2 id="celebrateTitle">Wonderful work!</h2>
+    <div class="next" id="celebrateLabel">Task 1 complete</div>
     <p class="msg" id="celebrateMsg">You did beautifully. Take a breath — the next task is on its way.</p>
     <div class="dotsMini" id="celebrateDots"></div>
   </div>
@@ -5417,7 +5617,10 @@ earlyStartButton.addEventListener("click", () => {
     earlyStartButton.textContent = "Reload assessment";
     earlyStartButton.removeAttribute("aria-busy");
     const copy = document.querySelector("#overlay p");
-    if(copy) copy.textContent = "The assessment tools did not finish loading. Check your connection, then reload this assessment.";
+    if(copy){
+      copy.textContent = "The assessment tools did not finish loading. Check your connection, then reload this assessment.";
+      copy.classList.remove("hidden");
+    }
   }, 15000);
 });
 </script>
@@ -5446,10 +5649,10 @@ const calibrationCamera = document.getElementById("calibrationCamera");
 const calibrationArm = document.getElementById("calibrationArm");
 const calibrationSeat = document.getElementById("calibrationSeat");
 const calibrationLap = document.getElementById("calibrationLap");
+const calibrationQuality = document.getElementById("calibrationQuality");
 const calibrationProgressFill = document.getElementById("calibrationProgressFill");
 const calibrationAutoStatus = document.getElementById("calibrationAutoStatus");
 const walkingCapture = document.getElementById("walkingCapture");
-const walkingCaptureEyebrow = document.getElementById("walkingCaptureEyebrow");
 const walkingCaptureTitle = document.getElementById("walkingCaptureTitle");
 const walkingCaptureLead = document.getElementById("walkingCaptureLead");
 const walkingCaptureGuidance = document.getElementById("walkingCaptureGuidance");
@@ -5465,6 +5668,15 @@ const walkingCaptureStatus = document.getElementById("walkingCaptureStatus");
 const walkingReviewVideo = document.getElementById("walkingReviewVideo");
 const skipBtn = document.getElementById("skipBtn");
 const exitBtn = document.getElementById("exitBtn");
+const instructionsToggle = document.getElementById("instructionsToggle");
+function setInstructionsOpen(open){
+  document.body.classList.toggle("instructions-open", !!open);
+  instructionsToggle.setAttribute("aria-expanded", String(!!open));
+  instructionsToggle.textContent = open ? "Hide instructions" : "Instructions";
+}
+instructionsToggle.addEventListener("click", () => {
+  setInstructionsOpen(!document.body.classList.contains("instructions-open"));
+});
 const advancedMarkerGate = document.getElementById("advancedMarkerGate");
 const markerChoicePanel = document.getElementById("markerChoicePanel");
 const markerMissingPanel = document.getElementById("markerMissingPanel");
@@ -5631,6 +5843,8 @@ let stepStartTime = 0;
 let inTargetSince = null;
 let lastInTargetTs = 0;
 let stepCompleted = false;
+let targetCompletion = null;
+const targetMotionPreference = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 let stepMetrics = {};
 let trunkLeanMax = 0;
 let shoulderFlexionMax = 0;
@@ -5689,7 +5903,6 @@ let lapCalibrationDiagnostic = {
 const LAP_CALIBRATION_MIN_SAMPLES = 8;
 const LAP_CALIBRATION_MIN_MS = 650;
 const TESTING_REACH_LAP_MIN_MS = 2000;
-const TESTING_REACH_TRUNK_BASELINE_WAIT_MS = 6000;
 const CALIBRATION_INSTRUCTION = "Before we begin, sit still with your affected hand resting on the visible part of your lap. Keep your face, shoulders, affected arm, and the top of your affected thigh in view. You do not need to show your knees or your full lap. I will locate your lap target for the assessment.";
 const TESTING_REACH_CALIBRATION_INSTRUCTION = "Rest your affected hand on your lap where the camera can see it. Hold it still for two seconds. Keep your face, both shoulders, affected arm, and both hips in view for the movement and trunk lean checks. You can tilt the camera instead of moving farther away.";
 const CALIBRATION_COMPLETE_INSTRUCTION = "Calibration complete. Stay seated in this position and do not move the camera. We will begin the assessment now.";
@@ -5698,7 +5911,6 @@ let calibrationInstructionFinished = false;
 let preAssessmentCalibrationReady = false;
 let preservePreAssessmentLapCalibration = false;
 let calibrationAutoStartInProgress = false;
-let testingReachTrunkBaselineWaitSince = null;
 let handOpenScore = 0;                 // 0..1 — finger extension confidence
 let fistClosureScore = 0;              // 0..1 — mass finger flexion confidence
 let pinchScore = 0;                    // 0..1 — pinch confidence (1 = very close)
@@ -5722,6 +5934,7 @@ markerCanvas.height = 90;
 let markerCtx = markerCanvas.getContext("2d", {willReadFrequently:true});
 let lastMarkerScanTs = 0;
 let lastHandScanTs = 0;
+let lastMouthHandVideoTime = -1;
 let latestHandSeenAt = 0;
 let markerHistory = [];
 let latestMarker = null; // {object_center, object_visibility, object_stability}
@@ -5737,6 +5950,7 @@ let lastMotionSampleTs = 0;
 const MOTION_SAMPLE_INTERVAL_MS = 100;
 const MAX_MOTION_FRAMES = 2400;
 const CURRENT_USER_ID = URL_PARAMS.get("uid") || "";
+const LOCAL_PREVIEW_MODE = false; // Enabled by the loopback-only server guard.
 const ACCOUNT_GENERATION = URL_PARAMS.get("account_generation") || "0";
 const ACCOUNT_HEADERS = {"X-User-Id": CURRENT_USER_ID, "X-Account-Generation": ACCOUNT_GENERATION};
 const ASSESSMENT_PACKAGE = URL_PARAMS.get("package") || "upper_limb";
@@ -5748,9 +5962,12 @@ if(LIBRARY_TEST_MODE){
   const overlayHeading = overlay.querySelector("h1");
   const overlayCopy = overlay.querySelector("p");
   if(overlayHeading) overlayHeading.textContent = WALKING_TEST_MODE ? "Walking video test" : "Ready to test this task?";
-  if(overlayCopy) overlayCopy.textContent = WALKING_TEST_MODE
-    ? "Choose a walking video to calculate its 2D gait score."
-    : "This guided test stays separate from Assessment history, Progress, and the care plan.";
+  if(overlayCopy){
+    overlayCopy.textContent = WALKING_TEST_MODE
+      ? "Choose a walking video to calculate its 2D gait score."
+      : "This guided test stays separate from Assessment history, Progress, and the care plan.";
+    overlayCopy.classList.remove("hidden");
+  }
 }
 const ASSIGNED_TASK_IDS = (URL_PARAMS.get("task_ids") || "")
   .split(",").map(value => value.trim()).filter(Boolean);
@@ -5761,7 +5978,8 @@ const PREVIOUSLY_COMPLETED_TASK_IDS = new Set(
 const AFFECTED_SIDE = URL_PARAMS.get("affected_side") === "left" ? "left" : "right";
 const assessmentQuality = new RehynAssessmentQuality.Tracker(window.REHYN_ASSESSMENT_RUBRIC, AFFECTED_SIDE, {
   peakReachAngles:LIBRARY_TEST_MODE,
-  testingReachTrunkLean:LIBRARY_TEST_MODE && ASSIGNED_TASK_IDS.length===1 && ASSIGNED_TASK_IDS[0]==="T1",
+  testingReachTrunkLean:LIBRARY_TEST_MODE && ASSIGNED_TASK_IDS.length===1 && ["T1","T3"].includes(ASSIGNED_TASK_IDS[0]),
+  testingMouthHeadDrop:LIBRARY_TEST_MODE && ASSIGNED_TASK_IDS.length===1 && ASSIGNED_TASK_IDS[0]==="T3",
 });
 let lastQualityPoseAt = -1;
 let lastQualityCaption = "";
@@ -5816,7 +6034,7 @@ function postRN(data){
 }
 
 function persistTaskProgress(taskId){
-  if(LIBRARY_TEST_MODE) return Promise.resolve(null);
+  if(LIBRARY_TEST_MODE || LOCAL_PREVIEW_MODE) return Promise.resolve(null);
   if(!CURRENT_USER_ID || !taskId) return Promise.resolve(null);
   const query = new URLSearchParams({package_id: ASSESSMENT_PACKAGE, task_id: taskId});
   const request = fetch(`${API_BASE}/assessment/task-progress?${query.toString()}`, {
@@ -5876,7 +6094,7 @@ function supportedTaskVideoMimeType(){
 }
 
 function beginTaskRecording(taskId){
-  if(LIBRARY_TEST_MODE) return;
+  if(LIBRARY_TEST_MODE || LOCAL_PREVIEW_MODE) return;
   if(activeTaskRecorder && activeTaskRecording && activeTaskRecording.taskId === taskId) return;
   if(!window.MediaRecorder || !video.srcObject){
     if(!recorderUnavailableReported){
@@ -6019,6 +6237,7 @@ async function uploadTaskVideoToCloud(recording, blob, durationMs, onUploadProgr
 }
 
 async function persistTaskVideo(recording, blob, {onUploadProgress=null}={}){
+  if(LOCAL_PREVIEW_MODE) return null;
   const durationMs = Number.isFinite(recording.durationMs)
     ? Math.max(0, Math.round(recording.durationMs))
     : Math.max(0, Math.round(performance.now() - recording.startedAt));
@@ -6133,6 +6352,7 @@ function captureMotionFrame(now){
 
 async function loadTasks(){
   const taskQuery = new URLSearchParams({package:ASSESSMENT_PACKAGE});
+  if(LOCAL_PREVIEW_MODE) taskQuery.set("local_preview", "1");
   if(ASSIGNED_TASK_IDS.length) taskQuery.set("task_ids", ASSIGNED_TASK_IDS.join(","));
   if(LIBRARY_TEST_MODE) taskQuery.set("library_test", "1");
   const controller = new AbortController();
@@ -6158,8 +6378,6 @@ async function loadTasks(){
   const json = await res.json();
   tasks = json.tasks;
   voiceId = json.voice_id;
-  const overlayCopy = overlay.querySelector("p");
-  if(overlayCopy) overlayCopy.textContent = `We will guide you through ${tasks.length} short movement tasks using your camera. Move into the camera view, then tap Start.`;
   if(START_TASK_ID){
     const startIdx = tasks.findIndex((task) => task.id === START_TASK_ID);
     if(startIdx >= 0) currentTaskIdx = startIdx;
@@ -6245,6 +6463,7 @@ async function setupPose(){
     baseOptions:{ modelAssetPath: "/vendor/mediapipe/models/pose_landmarker_lite.task" },
     runningMode: "VIDEO",
     numPoses: 1,
+      outputSegmentationMasks: seatedTestingCalibrationEnabled(),
   });
 }
 
@@ -6289,7 +6508,7 @@ async function setupHand(){
     handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
       baseOptions:{ modelAssetPath: "/vendor/mediapipe/models/hand_landmarker.task" },
       runningMode: "VIDEO",
-      numHands: 4,  // Patient hands plus a helping carer hand or two.
+      numHands: testingMouthEnabled() ? 2 : 4, // Select the affected hand from either visible hand.
       minHandDetectionConfidence: 0.65,
       minHandPresenceConfidence: 0.65,
       minTrackingConfidence: 0.7,
@@ -6303,7 +6522,7 @@ async function setupHand(){
 
 async function setupTrackingModels(){
   await setupPose();
-  if(ASSESSMENT_PACKAGE === "hand"){
+  if(ASSESSMENT_PACKAGE === "hand" || tasks.some(task=>task.id==="T3")){
     await setupHand();
   }
   drawingUtils = new DrawingUtils(ctx);
@@ -6311,6 +6530,7 @@ async function setupTrackingModels(){
 
 function setWalkingCaptureStatus(message, tone=""){
   walkingCaptureStatus.textContent = message;
+  walkingCaptureStatus.classList.toggle("hidden", !message);
   walkingCaptureStatus.classList.toggle("good", tone === "good");
   walkingCaptureStatus.classList.toggle("warn", tone === "warn");
 }
@@ -6319,11 +6539,11 @@ async function showWalkingCapture(task){
   pendingUnconfirmedWalkingVideo = null;
   pendingUnconfirmedWalkingValidation = null;
   walkingProceedUnconfirmedBtn.classList.add("hidden");
-  walkingCaptureEyebrow.textContent = WALKING_TEST_MODE ? "Settings test" : "Final walking record";
-  walkingCaptureTitle.textContent = "Upload a short frontal walking video";
+  walkingCapture.classList.toggle("walkingTestMode", WALKING_TEST_MODE);
+  walkingCaptureTitle.textContent = WALKING_TEST_MODE ? "Upload a short frontal walking video" : "Walk toward the camera";
   walkingCaptureLead.textContent = WALKING_TEST_MODE
     ? "Choose a walking video to calculate its score immediately. The test does not change the patient's assessment, points, or progress."
-    : "Ask a carer or family member to record from the front while you walk toward the camera at your usual comfortable pace.";
+    : "Ask someone to film you from the front while you walk toward the camera at your usual pace, with your usual walking aid.";
   if(WALKING_TEST_MODE){
     walkingCaptureGuidance.innerHTML = [
       "A short frontal video is best. Keep the person's whole body and walking aid visible when possible.",
@@ -6336,7 +6556,7 @@ async function showWalkingCapture(task){
   walkingMobileActions.classList.add("hidden");
   setWalkingCaptureStatus(WALKING_TEST_MODE
     ? "Choose a video. Rehyn will analyse up to 60 frames on this device, then show the score."
-    : "Choose any walking video from this device. Short clips are accepted; a score is shown only when the walking task contains measurable evidence.");
+    : "");
   walkingCapture.classList.remove("hidden");
   ui.classList.add("hidden");
   renderDots();
@@ -6960,7 +7180,7 @@ async function completeUploadedWalkingTask(file, validation){
     return;
   }
   let cloudRecord = null;
-  if(!LIBRARY_TEST_MODE){
+  if(!LIBRARY_TEST_MODE && !LOCAL_PREVIEW_MODE){
     cloudRecord = await persistTaskVideo({
       taskId:task.id,
       startedAt:performance.now(),
@@ -6973,12 +7193,13 @@ async function completeUploadedWalkingTask(file, validation){
       },
     });
   }
-  const gaitEvidence = validation.gaitAnalysis && cloudRecord?.id
+  const walkingEvidenceId = LOCAL_PREVIEW_MODE ? "local-preview-walking" : cloudRecord?.id;
+  const gaitEvidence = validation.gaitAnalysis && walkingEvidenceId
     ? {
         ...validation.gaitAnalysis,
         provenance:{
           ...(validation.gaitAnalysis.provenance || {}),
-          source_video_id:String(cloudRecord.id),
+          source_video_id:String(walkingEvidenceId),
         },
       }
     : null;
@@ -7072,8 +7293,9 @@ function unlockAudioPlayback(){
     // gesture on Safari after camera and model setup finished.
     .then(() => new Promise(resolve => setTimeout(resolve, 180)))
     .then(() => {
-      audioEl.pause();
-      audioEl.currentTime = 0;
+      // A late unlock callback must never pause a real instruction that has
+      // already replaced the silent primer on the shared media element.
+      if(audioEl.src === silentUrl){audioEl.pause();audioEl.currentTime = 0;}
       URL.revokeObjectURL(silentUrl);
       return true;
     })
@@ -7120,7 +7342,8 @@ function prefetchUpcomingVoice(){
   if(!task || !Array.isArray(task.steps)) return;
   const nextStep = task.steps[currentStepIdx + 1];
   if(nextStep && nextStep.voice){
-    if(testingMouthEnabled()){mouthStepLines(nextStep).forEach(prefetchMouthVoice);return;}
+    if(testingReachEnabled()){reachStepVoiceLines(nextStep).forEach(prefetchReachMollyAudio);return;}
+    if(handToMouthTaskEnabled()){mouthStepLines(nextStep).forEach(prefetchVoice);return;}
     prefetchVoice(nextStep.voice);
   }
 }
@@ -7262,6 +7485,7 @@ async function startStep(){
   inTargetSince = null;
   lastInTargetTs = 0;
   stepCompleted = false;
+  targetCompletion = null;
   fistCloseReadyObserved = false;
   fistClosureMinScore = 1;
   fistClosingStarted = false;
@@ -7277,6 +7501,7 @@ async function startStep(){
   correctionVoicePlaying = false;
   stepMetrics = {};
   assessmentQuality.reset(window.REHYN_ASSESSMENT_RUBRIC.tasks[task.id]?.steps.find(rule => rule.id === step.id));
+  beginMouthMovement(step);
   document.getElementById("assessmentQualityStatus").textContent = "";
   lastQualityCaption = "";
   trunkLeanMax = 0;
@@ -7333,12 +7558,14 @@ async function startStep(){
   captionEl.textContent = step.caption;
   renderDots();
   // Show step intro card (caption + voice waveform)
+  setInstructionsOpen(false);
   document.body.classList.add("voice-playing");
   document.body.classList.remove("step-active");
   postRN({type:"step_start", task_id: task.id, step_id: step.id});
-  if(testingMouthEnabled()){
+  if(handToMouthTaskEnabled()){
+    if(testingMouthEnabled())mouthPanel.scrollTop=0;
     for(const line of mouthStepLines(step))await playVoice(line);
-    document.getElementById("mouthCaption").textContent=step.caption;
+    if(testingMouthEnabled())document.getElementById("mouthCaption").textContent=step.caption;
   }else if(testingReachEnabled()){
     for(const line of reachStepVoiceLines(step))await playVoice(line);
     if(step.id==="T1-S2"){
@@ -7349,10 +7576,12 @@ async function startStep(){
     await playVoice(step.voice);
   }
   prefetchUpcomingVoice();
-  // Voice finished → unlock the target and fade the bottom card
+  // Voice finished → unlock the target and clear the camera view. Keep captions
+  // visible when voice is off/unavailable; the patient can still collapse them.
   voiceFinishedAt = performance.now();
   document.body.classList.remove("voice-playing");
   document.body.classList.add("step-active");
+  setInstructionsOpen(!VOICE_GUIDANCE_ENABLED || voiceText.classList.contains("voiceRetry"));
 }
 
 function distance(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
@@ -7425,6 +7654,12 @@ function selectAffectedHandDetection(result, now=performance.now()){
   }else{
     eligible = candidates.filter(candidate => candidate.handedness === expectedSide
       || (trackIsFresh && candidate.trackDistance <= 0.16));
+  }
+  if(handToMouthTaskEnabled()){
+    const opposite=latestPoseLandmarks && sideLandmarks(latestPoseLandmarks,AFFECTED_SIDE==="left"?"right":"left").wrist;
+    eligible=eligible.filter(candidate=>candidate.landmarks?.length===21
+      && candidate.landmarks.every(p=>p && Number.isFinite(p.x) && Number.isFinite(p.y))
+      && (!landmarkIsUsable(opposite,.65) || distance(candidate.wrist,opposite)>candidate.poseDistance+.02));
   }
   if(!eligible.length) return null;
   eligible.sort((a,b) => a.score - b.score);
@@ -7552,7 +7787,7 @@ function lapWristZoneReason(wrist, hip, midShoulder, torsoLength){
 
 function lapTargetCandidateStatus(lm){
   const sideLabel = AFFECTED_SIDE === "left" ? "left" : "right";
-  if(testingReachEnabled()){
+  if(seatedTestingCalibrationEnabled()){
     const wrist=lm && lm.length>=33 ? sideLandmarks(lm,AFFECTED_SIDE).wrist : null;
     if(!landmarkIsInFrame(wrist,0.45)) return {
       candidate:null,
@@ -7649,9 +7884,20 @@ function lapTargetCandidate(lm){
 function updateLapTargetCalibration(lm, now){
   const lapStep = calibratingAssessment ? upcomingLapStep() : currentTaskLapStep();
   if(!lapStep) return;
-  if(testingReachEnabled()){
+  if(seatedTestingCalibrationEnabled()){
     if(lapTargetCalibration.ready){
-      if(!forwardReachPlacement?.ready) updateTestingReachPlacement(lm);
+      // Reframe only when the visible wrist has actually moved away. A brief
+      // missing face/hip or lighting check must not erase a stable lap point.
+      const wrist=lapTargetCandidate(lm),state=lapTargetCalibration;
+      if(calibratingAssessment && wrist && Math.hypot(wrist.x-state.target.x,wrist.y-state.target.y)>.04){
+        state.displacedSince??=now;
+        if(now-state.displacedSince>=450){
+          lapTargetCalibration=newLapTargetCalibration();forwardReachPlacement=null;
+        }
+      }else state.displacedSince=null;
+    }
+    if(lapTargetCalibration.ready){
+      if(testingReachEnabled() && !forwardReachPlacement?.ready) updateTestingReachPlacement(lm);
       return;
     }
     updateTestingReachLapCalibration(lm,now,lapStep);
@@ -7758,28 +8004,32 @@ function updateTestingReachLapCalibration(lm,now,lapStep){
   const candidate=lapTargetCandidate(lm);
   const state=lapTargetCalibration;
   if(!candidate){
-    if(state.samples.length && now-state.lastCandidateAt>250){
+    if(state.samples.length && now-state.lastCandidateAt>450){
       state.samples=[];state.target=null;dynamicTargetPos=null;
     }
     return;
   }
   // A tracking gap starts a new hold; an old wrist location cannot become the
   // lap point when the hand reappears elsewhere in the frame.
-  if(state.samples.length && now-state.lastCandidateAt>250) state.samples=[];
+  if(state.samples.length && now-state.lastCandidateAt>450) state.samples=[];
   state.lastCandidateAt=now;
   const samples=state.samples;
   samples.push({x:candidate.x,y:candidate.y,t:now});
-  while(samples.length>240 || (samples.length && now-samples[0].t>2100))samples.shift();
+  // Retain the sample straddling the two-second boundary. Dropping every
+  // sample older than 2.1 s can leave a low-FPS window forever short of 2 s.
+  while(samples.length>240 || (samples.length>LAP_CALIBRATION_MIN_SAMPLES && samples[1].t<=now-TESTING_REACH_LAP_MIN_MS))samples.shift();
   const center={x:medianValue(samples.map(s=>s.x)),y:medianValue(samples.map(s=>s.y))};
   state.target=center;
   dynamicTargetPos=center;
-  const heldMs=now-samples[0].t;
   const maxJitter=0.04;
-  const stable=samples.every(s=>Math.hypot(s.x-center.x,s.y-center.y)<=maxJitter);
+  const inliers=samples.filter(s=>Math.hypot(s.x-center.x,s.y-center.y)<=maxJitter);
+  const heldMs=inliers.length?inliers[inliers.length-1].t-inliers[0].t:0;
+  const stable=inliers.length>=Math.ceil(samples.length*.9)
+    && inliers[inliers.length-1]===samples[samples.length-1];
   lapCalibrationDiagnostic={reason:"stabilizing",guidance:stable
     ? `Keep your hand still on your lap · ${(Math.min(heldMs,TESTING_REACH_LAP_MIN_MS)/1000).toFixed(1)} of 2 seconds.`
     : "Keep your hand still on your lap for two seconds; tracking will restart once it settles."};
-  if(samples.length<LAP_CALIBRATION_MIN_SAMPLES || heldMs<TESTING_REACH_LAP_MIN_MS || !stable)return;
+  if(inliers.length<LAP_CALIBRATION_MIN_SAMPLES || heldMs<TESTING_REACH_LAP_MIN_MS || !stable)return;
   state.ready=true;
   state.target=center;
   if(!state.announced){
@@ -7787,7 +8037,7 @@ function updateTestingReachLapCalibration(lm,now,lapStep){
     postRN({type:"lap_target_calibrated",task_id:tasks[currentTaskIdx].id,step_id:lapStep.id,
       x:+center.x.toFixed(4),y:+center.y.toFixed(4),sample_count:samples.length});
   }
-  updateTestingReachPlacement(lm);
+  if(testingReachEnabled())updateTestingReachPlacement(lm);
 }
 
 function needsForwardReachPlacement(){
@@ -7842,7 +8092,7 @@ function calibrationLandmarkStatus(lm){
   const faceVisible = [lm[0], lm[9], lm[10]].some(point => landmarkIsInFrame(point, visibility));
   const armVisible = faceVisible && [lm[11], lm[12], affected.elbow, affected.wrist]
     .every(point => landmarkIsInFrame(point, visibility));
-  const seatedAnchorsVisible = testingReachEnabled()
+  const seatedAnchorsVisible = seatedTestingCalibrationEnabled()
     ? landmarkIsInFrame(affected.wrist, visibility)
     : [affected.hip, affected.wrist].every(point => landmarkIsInFrame(point, visibility));
   const lapReady = !!(lapTargetCalibration.ready && lapTargetCalibration.target
@@ -7859,27 +8109,23 @@ function calibrationLandmarkStatus(lm){
 
 function setCalibrationCheck(element, complete){
   element.classList.toggle("done", !!complete);
-  element.querySelector(".statusDot").textContent = complete ? "✓" : element === calibrationCamera ? "1" : element === calibrationArm ? "2" : element === calibrationSeat ? "3" : "4";
+  element.querySelector(".statusDot").textContent = complete ? "✓" : element === calibrationCamera ? "1" : element === calibrationArm ? "2" : element === calibrationSeat ? "3" : element === calibrationLap ? "4" : "5";
 }
 
 function updatePreAssessmentCalibrationUI(lm){
   if(!calibratingAssessment) return;
   const status = calibrationLandmarkStatus(lm);
   const lapGuidance=status.lapGuidance || "Rest your affected hand on your lap where the camera can see it.";
-  const lapLocated=testingReachEnabled() ? lapTargetCalibration.ready : status.lapReady;
-  const trunkBaselineReady = !testingReachEnabled() || !!assessmentQuality.trunkLeanBaseline;
-  if(testingReachEnabled() && lapTargetCalibration.ready && forwardReachPlacement?.ready
-      && testingReachTrunkBaselineWaitSince===null)
-    testingReachTrunkBaselineWaitSince=performance.now();
-  const trunkBaselineWaited=testingReachTrunkBaselineWaitSince===null ? 0 : performance.now()-testingReachTrunkBaselineWaitSince;
-  const trunkBaselineTimedOut=testingReachEnabled() && trunkBaselineWaited>=TESTING_REACH_TRUNK_BASELINE_WAIT_MS;
+  const lapLocated=seatedTestingCalibrationEnabled() ? lapTargetCalibration.ready : status.lapReady;
+  const trunkBaselineReady = testingMouthEnabled() ? !!assessmentQuality.baseline : !testingReachEnabled() || !!assessmentQuality.trunkLeanBaseline;
   const trunkBaselineReason=testingReachEnabled() && !trunkBaselineReady && status.ready
     ? assessmentQuality.trunkLeanMetrics?.metricsFromLandmarks(lm,video.videoWidth/video.videoHeight)?.reason : null;
   const trunkBaselineGuidance=trunkBaselineReason
     ? `${trunkBaselineReason} The lap target is set; the trunk-lean reference is still being checked.`
-    : `Checking upright posture: ${assessmentQuality.trunkLeanBaselineFrames.length} of 45 clear frames. The lap target is set.`;
-  if(!calibrationAutoStartInProgress)
-    preAssessmentCalibrationReady = status.ready && (trunkBaselineReady || trunkBaselineTimedOut);
+    : 'Keep sitting upright with your hand on the saved lap point while the posture reference is checked.';
+  const cameraQuality=seatedTestingCalibrationEnabled()?reachCameraStatus():{ready:true};
+  if(seatedTestingCalibrationEnabled())syncReachCalibrationChecks(cameraQuality);
+  preAssessmentCalibrationReady = status.ready && trunkBaselineReady && cameraQuality.ready;
   if(preAssessmentCalibrationReady){
     setCalibrationCheck(calibrationCamera, true);
     setCalibrationCheck(calibrationArm, true);
@@ -7893,7 +8139,7 @@ function updatePreAssessmentCalibrationUI(lm){
     calibrationAutoStatus.classList.add("ready");
     calibrationAutoStatus.textContent = calibrationInstructionFinished
       ? "Calibration complete. Starting assessment..."
-      : reachVoice.failed
+      : (testingMouthEnabled()?mouthVoice.failed:reachVoice.failed)
       ? "Voice paused. Retry voice or turn it off to continue with captions."
       : "Calibration complete. Please finish listening.";
     if(calibrationInstructionFinished) void completePreAssessmentCalibration();
@@ -7902,12 +8148,14 @@ function updatePreAssessmentCalibrationUI(lm){
     setCalibrationCheck(calibrationArm, status.armVisible);
     setCalibrationCheck(calibrationSeat, status.seatedAnchorsVisible);
     setCalibrationCheck(calibrationLap, lapLocated);
-    const completed = [status.cameraReady, status.armVisible, status.seatedAnchorsVisible, lapLocated].filter(Boolean).length;
-    calibrationProgressFill.style.width = `${!preAssessmentCalibrationReady && completed===4 ? 90 : completed * 25}%`;
+    const checks = [status.cameraReady, status.armVisible, status.seatedAnchorsVisible, lapLocated];
+    if(seatedTestingCalibrationEnabled())checks.push(...['lighting','contrast','landmarks','angles','stability','baseline'].map(key=>cameraQuality.checks?.[key]?.ready===true));
+    const completed = checks.filter(Boolean).length;
+    calibrationProgressFill.style.width = `${Math.min(90,completed/checks.length*100)}%`;
     calibrationTitle.textContent = testingReachEnabled() && lapTargetCalibration.ready && !forwardReachPlacement?.ready
       ? "Positioning the reach circles"
       : status.ready && !trunkBaselineReady ? "Checking upright posture" : "Let us find your seated position";
-    calibrationLead.textContent = testingReachEnabled() && !lapTargetCalibration.ready
+    calibrationLead.textContent = seatedTestingCalibrationEnabled() && !lapTargetCalibration.ready
       ? lapGuidance
       : testingReachEnabled() && !forwardReachPlacement?.ready
       ? lapGuidance
@@ -7919,7 +8167,7 @@ function updatePreAssessmentCalibrationUI(lm){
         ? status.lapGuidance
       : "Sit still with your affected hand resting on the visible part of your lap. Keep your face, shoulders, affected arm, and the top of your affected thigh in view.";
     calibrationAutoStatus.classList.remove("ready");
-    calibrationAutoStatus.textContent = testingReachEnabled() && !lapTargetCalibration.ready
+    calibrationAutoStatus.textContent = seatedTestingCalibrationEnabled() && !lapTargetCalibration.ready
       ? lapGuidance
       : testingReachEnabled() && !forwardReachPlacement?.ready
       ? `Lap point saved. ${lapGuidance}`
@@ -7930,6 +8178,24 @@ function updatePreAssessmentCalibrationUI(lm){
       : testingMouthEnabled() && lapLocated && !mouthTargetCalibration.locked
       ? "Lap point saved. Keep your mouth visible and your head still while the mouth target is located."
       : "Keep still. Assessment will start automatically.";
+    if(seatedTestingCalibrationEnabled() && !cameraQuality.ready && status.cameraReady
+      && !['baseline','settling'].includes(cameraQuality.issue)){
+      calibrationTitle.textContent='Checking camera quality';
+      calibrationLead.textContent=cameraQuality.message;
+      const q=cameraQuality.evidence;
+      const details=[];
+      if(Number.isFinite(q?.bodyLuma))details.push(`Light level: ${Math.round(q.bodyLuma)}/255.`);
+      if(q?.contrast?.length)details.push(`Shoulder contrast: ${q.contrast.map(v=>v==null?'not measured':v.toFixed(1)).join(' / ')} (minimum 12).`);
+      calibrationAutoStatus.textContent=(cameraQuality.detail||cameraQuality.message)+' '+details.join(' ');
+    }else if(seatedTestingCalibrationEnabled() && !cameraQuality.ready && status.cameraReady && lapLocated && (!testingReachEnabled() || forwardReachPlacement?.ready)){
+      calibrationTitle.textContent='Checking upright posture';
+      calibrationLead.textContent='Your lap point is saved. Keep sitting upright while the grading angles and posture reference are checked.';
+      calibrationAutoStatus.textContent=`Clear camera measurements: ${(Math.min(cameraQuality.clearMs||0,2000)/1000).toFixed(1)} of 2 seconds.`;
+      if(cameraQuality.issue==='baseline' && cameraQuality.detail)calibrationAutoStatus.textContent+=' '+cameraQuality.detail;
+    }
+    if(seatedTestingCalibrationEnabled() && !cameraQuality.ready && cameraQuality.lastReset){
+      calibrationAutoStatus.textContent+=` Last timer restart (${cameraQuality.resetCount}): ${cameraQuality.lastReset.detail}`;
+    }
   }
 }
 
@@ -7941,8 +8207,19 @@ async function completePreAssessmentCalibration(){
   calibrationLead.textContent = (testingMouthEnabled() ? assessmentQuality.baseline : assessmentQuality.trunkLeanBaseline)
     ? "Stay seated in this position and do not move the camera. The assessment will begin automatically."
     : "Your lap and reach targets are set. The trunk-lean reference was unavailable; the exercise will begin automatically.";
+  // Let the continuous ring finish and the central check become visible, even
+  // when voice is off or finishes immediately. Detection still gates completion.
+  const ringAnimation = seatedTestingCalibrationEnabled() ? Promise.resolve()
+    : new Promise(resolve => setTimeout(resolve, 2200));
   await playVoice(CALIBRATION_COMPLETE_INSTRUCTION);
+  await ringAnimation;
   if(!calibratingAssessment) return;
+  // Lighting/tracking can change while the completion cue is playing. Never
+  // start from a previously green check when the current camera view fails.
+  if(seatedTestingCalibrationEnabled() && (!reachCameraStatus().ready || !calibrationLandmarkStatus(latestPoseLandmarks).ready)){
+    calibrationAutoStartInProgress=false;preAssessmentCalibrationReady=false;
+    updatePreAssessmentCalibrationUI(latestPoseLandmarks);return;
+  }
   finalizePatientFaceReference();
   assessmentLapTarget = lapTargetCalibration.target
     ? {...lapTargetCalibration.target}
@@ -7953,7 +8230,6 @@ async function completePreAssessmentCalibration(){
       ? (forwardReachPlacement.lapRadius || forwardReachPlacement.radius)
       : Math.min(Math.max(0.10, shoulderWidth(latestPoseLandmarks) * 0.55), 0.18)
     : null;
-  if(testingMouthEnabled() && latestPoseLandmarks){const chest=midpoint(latestPoseLandmarks[11],latestPoseLandmarks[12]);mouthFlow.chestTarget=mirrorX({x:chest.x,y:chest.y+0.06});}
   preservePreAssessmentLapCalibration = true;
   calibratingAssessment = false;
   calibrationOverlay.classList.add("hidden");
@@ -8284,14 +8560,25 @@ function affectedReachContactPoints(lm){
   return affectedPoseHandPoints(lm).map(point => mirrorX(point));
 }
 
+function testingReachWristContact(lm,step=getCurrentStep()){
+  const target=step && getEffectiveTargetXY(step);
+  return RehynReachTarget.wristContact({landmarks:lm,side:AFFECTED_SIDE,
+    target:target && targetCanvasPoint(step,target),
+    aspect:video.videoWidth/video.videoHeight});
+}
+
 function closestAffectedReachPointToTarget(lm, target){
+  if(testingReachEnabled()){
+    const contact=testingReachWristContact(lm);
+    return contact.point && mirrorX(contact.point);
+  }
   const points = affectedReachContactPoints(lm);
   if(!points.length || !target) return null;
   return points.reduce((closest, point) => forwardReachDistance(point, target) < forwardReachDistance(closest, target) ? point : closest);
 }
 
 function affectedMouthContactPoints(lm){
-  const points = affectedPoseHandPoints(lm);
+  const points = affectedPoseHandPoints(lm).filter(point=>!handToMouthTaskEnabled() || landmarkIsUsable(point,.65));
   if(latestHandLandmarks && latestHandLandmarks.length >= 21
     && performance.now() - latestHandSeenAt <= handLandmarkFreshMs()){
     const fingertips = [4, 8, 12, 16, 20]
@@ -8307,12 +8594,12 @@ function affectedMouthContactPoints(lm){
 function closestAffectedHandPointToTarget(lm, target){
   const points = affectedMouthContactPoints(lm);
   if(!points.length || !target) return null;
-  const distance = testingMouthEnabled() ? mouthScreenDistance : distXY;
+  const distance = handToMouthTaskEnabled() ? mouthScreenDistance : distXY;
   return points.reduce((closest, point) => distance(point, target) < distance(closest, target) ? point : closest);
 }
 
 function mouthContactDistance(lm, target){
-  return testingMouthEnabled() ? mouthScreenDistance(closestAffectedHandPointToTarget(lm,target),target) : distXY(closestAffectedHandPointToTarget(lm, target), target);
+  return handToMouthTaskEnabled() ? mouthScreenDistance(closestAffectedHandPointToTarget(lm,target),target) : distXY(closestAffectedHandPointToTarget(lm, target), target);
 }
 
 function handPalmCenter(){
@@ -8377,7 +8664,6 @@ function getEffectiveTargetXY(step){
     if(!forwardReachPlacement?.ready) return null;
     return {...(step.id === "T1-S1" ? forwardReachPlacement.start : forwardReachPlacement.raised)};
   }
-  if(testingMouthEnabled() && step.id==="T3-S1" && mouthFlow.chestTarget)return mouthFlow.chestTarget;
   if(isCenteredArmStartStep(step)){
     return {x:0.5, y:step.target.y};
   }
@@ -8530,6 +8816,8 @@ function computeHandMetrics(){
 }
 
 function needsHandLandmarks(){
+  if(testingReachEnabled())return false; // T1 uses Pose Lite's wrist; no second hand model.
+  if(handToMouthTaskEnabled())return !calibratingAssessment && !stepCompleted && isMouthTarget(getCurrentStep());
   if(isHandTask()) return true;
   const task = tasks[currentTaskIdx];
   const step = getCurrentStep();
@@ -8552,6 +8840,7 @@ function isHandPerformanceBackoff(){
 }
 
 function handLandmarkFreshMs(){
+  if(handToMouthTaskEnabled())return 220;
   return isHandPerformanceBackoff() ? HAND_BACKOFF_LANDMARK_FRESH_MS : HAND_LANDMARK_FRESH_MS;
 }
 
@@ -8822,6 +9111,7 @@ function updateMovementGate(lm){
 
 function movementGateRequired(step){
   if(!step || step.movement_required === false || isHandTask()) return false;
+  if(testingReachEnabled() || handToMouthTaskEnabled())return false; // One shared T3 contact/hold controller in both modes.
   // These endpoints cannot be occupied by the affected hand in the preceding
   // position. Contact after the voice gate is therefore sufficient proof of a
   // deliberate first approach, even if the movement began during instruction.
@@ -9177,6 +9467,15 @@ function checkTarget(landmarks){
   // accidentally triggering the step while Aria is still explaining it.
   if(voiceFinishedAt === 0) return false;
   if(performance.now() - voiceFinishedAt < 350) return false;
+  if(testingReachEnabled()){
+    if(isLapTarget(step) && !lapTargetCalibration.ready)return false;
+    return RehynReachTarget.contains(testingReachWristContact(landmarks,step).distance,effectiveRadius(step,landmarks));
+  }
+  if(handToMouthTaskEnabled()){
+    if(isLapTarget(step) && !lapTargetCalibration.ready)return false;
+    if(isMouthTarget(step) && !mouthTargetCalibration.locked)return false;
+    return RehynReachTarget.contains(testingMouthContact(landmarks,step).distance,effectiveRadius(step,landmarks));
+  }
   if(isLapTarget(step)){
     if(!lapTargetCalibration.ready || !landmarks || !arrivedAfterMovement) return false;
     const affectedWristRaw = sideLandmarks(landmarks, AFFECTED_SIDE).wrist;
@@ -9369,6 +9668,105 @@ function drawTestingReachAngles(landmarks, world=latestPoseWorldLandmarks){
   return readout;
 }
 
+function drawTestingAssessmentAngles(landmarks, world=latestPoseWorldLandmarks){
+  const panel=document.getElementById("testingAssessmentAngles");
+  const taskId=tasks[currentTaskIdx]?.id;
+  const enabled=LIBRARY_TEST_MODE && RehynTestingAssessmentDiagnostics.TASKS.has(taskId);
+  panel.classList.toggle("hidden",!enabled);
+  if(!enabled) return;
+  const handFresh=latestHandLandmarks && performance.now()-latestHandSeenAt<=150;
+  const sampleFresh=assessmentQuality.lastTime!==null && performance.now()-assessmentQuality.lastTime<=250;
+  const sample=sampleFresh ? assessmentQuality.currentMetrics : null;
+  const hand=handFresh ? latestHandLandmarks : null;
+  const rubric=assessmentQuality.rubric;
+  const result=RehynTestingAssessmentDiagnostics.readout(taskId,rubric,sample,hand);
+  const format=(value,unit="deg")=>Number.isFinite(value)
+    ? unit==="ratio" ? `${(value*100).toFixed(1)}%` : `${value.toFixed(1)}${unit==="deg"?"°":""}` : "not measured";
+  document.getElementById("testingAssessmentTitle").textContent=tasks[currentTaskIdx]?.title || "Live measurements";
+  document.getElementById("testingAssessmentStep").textContent=`Current step: ${getCurrentStep()?.caption || "waiting to start"}`;
+  document.getElementById("testingAssessmentCriteria").textContent=result.criteria.length
+    ? result.criteria.map(row=>`${row.label}: ${format(row.value,row.unit)} / ${format(row.target,row.unit)} reference`).join("\n")
+    : "Waiting for step measurements";
+  let angles="";
+  let note="";
+  if(taskId==="T2"){
+    const aspect=video.videoWidth>0 && video.videoHeight>0 ? video.videoWidth/video.videoHeight : 1;
+    const poseReadout=RehynReachAngles.assessmentReadout(assessmentQuality,landmarks,world,aspect);
+    angles=`Arm elevation (model 3D): ${format(result.armElevation)}\nElbow extension (2D): ${format(result.elbowExtension)}\nCyan arm arc (2D guide): ${format(poseReadout.armElevationArc?.degrees)}`;
+    note="Arm elevation is scored from model world landmarks; its cyan 2D arc is only a visual guide. Elbow extension uses the yellow 2D arc. Angles are camera estimates.";
+    ctx.save();ctx.translate(canvas.width,0);ctx.scale(-1,1);
+    RehynReachAngles.drawAngleArcs(ctx,poseReadout,canvas.width,canvas.height,canvas.clientWidth);
+    ctx.restore();
+  }else if(taskId==="H3"){
+    const index=result.hand?.fingers[0];
+    const thumbMcp=hand ? RehynTestingAssessmentDiagnostics.angle3D(hand[1],hand[2],hand[3]) : null;
+    const thumb=hand ? RehynTestingAssessmentDiagnostics.angle3D(hand[2],hand[3],hand[4]) : null;
+    angles=`Pinch confidence: ${format(result.pinch,"ratio")}\nThumb-index gap / palm width: ${Number.isFinite(result.hand?.pinchGap)?result.hand.pinchGap.toFixed(2):"not measured"}\nThumb MCP: ${format(thumbMcp)} · Thumb IP: ${format(thumb)}\nIndex PIP: ${format(index?.pip)} · Index DIP: ${format(index?.dip)}`;
+    note="The pinch score uses smoothed thumb-index distance relative to palm width; finger angles are context only and do not directly earn points. Pink line joins the fingertips.";
+  }else{
+    angles=`Hand opening: ${format(result.handOpen,"ratio")} · Hand closure: ${format(result.handClosed,"ratio")}${taskId==="H4"?`\nClose-then-reopen cycle: ${result.cycle===1?"observed":result.cycle===0?"not yet observed":"not measured"}`:""}`;
+    angles+=`\nFinger angles (PIP / DIP):\n${result.hand ? result.hand.fingers.map(f=>`${f.name}: ${format(f.pip)} / ${format(f.dip)}`).join("\n") : "not measured"}`;
+    note="Finger angles contribute to the hand-opening estimate, along with finger reach and spread. Cyan/yellow arcs mark PIP/DIP joints. These angles are not separately scored. The close-then-reopen cycle requires closure ≥65% followed by opening ≥70%.";
+  }
+  document.getElementById("testingAssessmentAnglesText").textContent=angles;
+  document.getElementById("testingAssessmentNote").textContent=note;
+  document.getElementById("testingAssessmentPosture").textContent=result.posture.map(row=>{
+    const config=window.REHYN_ASSESSMENT_RUBRIC.compensations[row.id];
+    const check=sample ? assessmentQuality.compensations[row.id] : null;
+    const state=!Number.isFinite(row.value)?"not measured":check?.active?"sustained 0.5 s":row.value>config.threshold?"above threshold; not yet sustained":"below threshold";
+    return `${config.label}: ${format(row.value)} / >${config.threshold}° · ${state}`;
+  }).join("\n");
+  RehynTestingAssessmentDiagnostics.drawHandGuides(ctx,hand,canvas.width,canvas.height,taskId,RehynReachAngles);
+}
+
+// Rendering and hold progression consume the same contact/voice/freshness gates.
+function testingTargetState(landmarks,now=performance.now()){
+  const available=testingReachEnabled()
+    ? reachCanAttempt() && reachContactFrameValid(landmarks,now)
+    : mouthCanMeasure() && mouthContactFrameValid(landmarks,now);
+  const armed=!calibratingAssessment && !stepCompleted && !correctionVoicePlaying
+    && voiceFinishedAt>0 && now-voiceFinishedAt>=350 && available;
+  return {armed,contact:armed && checkTarget(landmarks)};
+}
+// Drawing helper only: how far the tracked hand is from the target, in units of the hit
+// radius (0 = centre, 1 = the ring edge). It mirrors the measures checkTarget uses without
+// changing them; when a task has no single hand point it returns NaN and the ring keeps a
+// steady middle weight.
+function targetProximityForDrawing(step, landmarks, targetXY, R){
+  try{
+    if(!(R > 0)) return Infinity;
+    if(isHandTask()){
+      const point = activeHandPoint();
+      return point ? Math.hypot(point.x - step.target.x, point.y - step.target.y) / R : Infinity;
+    }
+    if(isLowerTask() || isBalanceTask()) return NaN;
+    if(!landmarks || !targetXY) return Infinity;
+    if(isLapTarget(step)){
+      const wristRaw = sideLandmarks(landmarks, AFFECTED_SIDE).wrist;
+      return landmarkIsUsable(wristRaw) ? distXY(wristRaw, targetXY) / R : Infinity;
+    }
+    const task = tasks[currentTaskIdx];
+    if(task && task.id === "T1"){
+      return forwardReachDistance(closestAffectedReachPointToTarget(landmarks, targetXY), targetXY) / R;
+    }
+    const wrist = sideLandmarks(landmarks, AFFECTED_SIDE).wrist;
+    return wrist ? distXY(mirrorX(wrist), targetXY) / R : Infinity;
+  }catch(error){
+    return NaN;
+  }
+}
+
+function completeMovementTarget(step, landmarks, now){
+  const targetXY=getEffectiveTargetXY(step);
+  const point=targetXY ? targetCanvasPoint(step,targetXY) : null;
+  const completed=targetCompletion={stepId:step.id,startedAt:now,point:point ? {...point} : null,
+    radius:effectiveRadius(step,landmarks)};
+  if(navigator.vibrate)navigator.vibrate(80);
+  setTimeout(()=>{
+    if(running && stepCompleted && targetCompletion===completed && getCurrentStep()===step)nextStep(false);
+  },RehynReachTarget.completionDurationMs);
+}
+
 function drawOverlay(landmarks){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   const armOnly = LIBRARY_TEST_MODE && ["T1","T3"].includes(tasks[currentTaskIdx]?.id);
@@ -9406,7 +9804,8 @@ function drawOverlay(landmarks){
       drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {color:"#4A7856", lineWidth:4});
     }
   }
-  if(!armOnly && latestHandLandmarks && latestHandLandmarks.length >= 21){
+  if((!armOnly || testingMouthEnabled()) && latestHandLandmarks && latestHandLandmarks.length >= 21
+    && performance.now()-latestHandSeenAt<=handLandmarkFreshMs()){
     drawingUtils.drawConnectors(latestHandLandmarks, HAND_CONNECTIONS, {color:"rgba(127,229,163,0.88)", lineWidth:2});
     drawingUtils.drawLandmarks(latestHandLandmarks, {color:"rgba(217,229,220,0.72)", radius:1.4});
   }
@@ -9440,6 +9839,21 @@ function drawOverlay(landmarks){
     lapStatus.classList.add("hidden");
     return;
   }
+  // Finish at the exact position that was reached, then retire this circle.
+  // The next target still previews transparently throughout its instruction.
+  if(stepCompleted){
+    if(targetCompletion?.stepId===step.id && targetCompletion.point){
+      RehynReachTarget.drawTargetCompletion(ctx,{
+        x:targetCompletion.point.x*canvas.width,y:targetCompletion.point.y*canvas.height,
+        radius:targetCompletion.radius*Math.min(canvas.width,canvas.height),
+        elapsed:performance.now()-targetCompletion.startedAt,
+        reducedMotion:!!targetMotionPreference?.matches,mirrored:true});
+    }
+    lapStatus.classList.add("hidden");return;
+  }
+  if(celebrateEl.classList.contains("show")){
+    lapStatus.classList.add("hidden");return;
+  }
   if(isWalkingTask()){
     lapStatus.classList.add("hidden");
     return;
@@ -9463,39 +9877,47 @@ function drawOverlay(landmarks){
   // Visual radius MATCHES the actual hit radius — so what the user sees == what triggers.
   const effR = effectiveRadius(step, landmarks);
   const tr = effR * Math.min(canvas.width, canvas.height);
+  if(testingReachEnabled() || handToMouthTaskEnabled()){
+    const now=performance.now(),state=testingTargetState(landmarks,now);
+    RehynReachTarget.drawTestingTarget(ctx,{x:tx,y:ty,radius:tr,...state,now,
+      reducedMotion:!!targetMotionPreference?.matches,
+      progress:inTargetSince===null?0:Math.min(1,(now-inTargetSince)/step.hold_ms)});
+    return;
+  }
   const armed = (voiceFinishedAt > 0)
     && (performance.now() - voiceFinishedAt >= 350)
     && (!movementGateRequired(step) || arrivedAfterMovement);
-  const pulse = 1 + 0.08*Math.sin(performance.now()/250);
-  // outer pulsing ring — dashed/dim when not yet armed (voice still playing or movement gate not met)
+  // Proximity glow: the ring answers the hand continuously — thin and dashed while far
+  // (or not yet armed), thicker and warmer as the hand nears, and once inside it fills
+  // while the hold ring below fills green. Drawing only — arming, the hit radius and the
+  // hold logic are unchanged; the ring always sits at the true hit radius.
+  const holdingTarget = !!inTargetSince;
+  const proximity = holdingTarget ? 0 : targetProximityForDrawing(step, landmarks, targetXY, effR);
+  // 0 = far away or not armed, 1 = the hand is at the ring edge.
+  const closeness = !armed ? 0 : Number.isFinite(proximity) ? Math.max(0, Math.min(1, (2.2 - proximity) / 1.2)) : 0.6;
   ctx.save();
   ctx.beginPath();
-  ctx.arc(tx, ty, tr*pulse, 0, Math.PI*2);
-  ctx.lineWidth = 6;
-  if(armed){
-    ctx.strokeStyle = "#E18E6D";
+  ctx.arc(tx, ty, tr, 0, Math.PI*2);
+  if(holdingTarget){
+    ctx.fillStyle = "rgba(225,142,109,0.4)";
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "rgba(225,142,109,0.35)";
     ctx.setLineDash([]);
   } else {
-    ctx.strokeStyle = "rgba(225,142,109,0.45)";
-    ctx.setLineDash([10, 8]);
+    if(closeness > 0){
+      ctx.fillStyle = "rgba(225,142,109," + (0.12 * closeness).toFixed(3) + ")";
+      ctx.fill();
+    }
+    ctx.lineWidth = 3 + 3 * closeness;
+    ctx.strokeStyle = "rgba(225,142,109," + (0.45 + 0.55 * closeness).toFixed(3) + ")";
+    ctx.setLineDash(closeness > 0.97 ? [] : [10 + 40 * closeness, 8 * (1 - closeness) + 0.5]);
   }
   ctx.stroke();
   ctx.restore();
-  // inner glow only when armed
-  if(armed){
-    ctx.beginPath();
-    ctx.arc(tx, ty, tr*0.55, 0, Math.PI*2);
-    ctx.fillStyle = "rgba(225,142,109,0.4)";
-    ctx.fill();
-  }
-  if(testingReachEnabled()){
-    // Keep the centre easy to pick out even when the lap-return ring has been
-    // fitted smaller to stay completely inside the camera view.
-    ctx.beginPath();
-    ctx.arc(tx, ty, Math.max(5, Math.min(10, tr*0.16)), 0, Math.PI*2);
-    ctx.fillStyle = armed ? "#fff" : "rgba(255,255,255,0.8)";
-    ctx.fill();
-  }
+
+  RehynReachTarget.drawBreathingHalo(ctx,{x:tx,y:ty,radius:tr,now:performance.now(),
+    contact:holdingTarget,muted:!armed,reducedMotion:!!targetMotionPreference?.matches});
 
   // icon emoji (cup / table / towel ...) — drawn unmirrored using counter-flip
   const icon = step.target.icon;
@@ -9512,15 +9934,19 @@ function drawOverlay(landmarks){
     ctx.restore();
   }
 
-  // hold progress ring
+  // hold progress ring — fills clockwise on the target ring itself while the hand stays inside
   if(inTargetSince){
     const elapsed = performance.now() - inTargetSince;
     const progress = Math.min(1, elapsed / step.hold_ms);
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.arc(tx, ty, tr*(testingReachEnabled() ? 0.82 : 1.25), -Math.PI/2, -Math.PI/2 + progress*Math.PI*2);
-    ctx.strokeStyle = "#3C8255";
-    ctx.lineWidth = 8;
+    ctx.arc(tx, ty, tr, -Math.PI/2, -Math.PI/2 + progress*Math.PI*2);
+    ctx.strokeStyle = "#7FE5A3";
+    ctx.lineWidth = 6;
     ctx.stroke();
+    ctx.restore();
   }
 
   if(isAdvancedObjectMode() && latestMarker){
@@ -9646,7 +10072,8 @@ async function celebrateAndAdvance(){
   const voicePick = CELEBRATION_VOICES[currentTaskIdx % CELEBRATION_VOICES.length];
 
   // Show overlay
-  celebrateLabel.textContent = `Task ${currentTaskIdx + 1} of ${tasks.length} complete`;
+  const upcomingTask = tasks[currentTaskIdx + 1];
+  celebrateLabel.textContent = `${currentTaskIdx + 1} of ${tasks.length} · ${upcomingTask ? `Next: ${upcomingTask.title || upcomingTask.id}` : "All tasks complete"}`;
   celebrateTitle.textContent = pick.title;
   celebrateMsg.textContent = pick.msg;
   renderCelebrateDots();
@@ -9691,10 +10118,13 @@ async function celebrateAndAdvance(){
   startStep();
 }
 
+let completionScreen = null;
 async function finishAssessment(){
+  document.body.classList.remove("step-active");
+  setInstructionsOpen(false);
   running = false;
   audioEl.pause();
-  if(LIBRARY_TEST_MODE){
+  if(LIBRARY_TEST_MODE && !LOCAL_PREVIEW_MODE){
     if(testingMouthEnabled()){stopMouthVoice();if(taskResults[0])taskResults[0].metrics.assisted=mouthFlow.assisted;}
     if(testingReachEnabled()){
       if(taskResults[0])taskResults[0].metrics.testing_reach={support_available:reachFlow.support,stopped:reachFlow.stopped};
@@ -9708,42 +10138,46 @@ async function finishAssessment(){
     if(video.srcObject) video.srcObject.getTracks().forEach(track=>track.stop());
     return;
   }
-  captionEl.textContent = "Saving your task videos and results…";
-  voiceText.textContent = "Generating personalized plan…";
-  try{
+  // Keep dimensions before stopping the camera clears the video metadata.
+  const completedProjection = {
+    source_width:video.videoWidth, source_height:video.videoHeight,
+    display_width:cameraFrame.clientWidth, display_height:cameraFrame.clientHeight,
+    fit:CAMERA_FIT_MODE, device_class:CAMERA_DEVICE_CLASS, mirrored_for_patient:true,
+  };
+  if(video.srcObject) video.srcObject.getTracks().forEach(track=>track.stop());
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if(!completionScreen) completionScreen = window.RehynAssessmentCompletion.create({onExit:()=>{
+    if(window.ReactNativeWebView || window.parent!==window) postRN({type:"exit"});
+    else window.location.assign(LOCAL_PREVIEW_MODE ? window.location.href : "/");
+  }});
+  await completionScreen.run(async signal=>{
     if(pendingTaskVideoSaves.size){
       await Promise.allSettled(Array.from(pendingTaskVideoSaves));
     }
     if(pendingTaskProgressSaves.size){
       await Promise.allSettled(Array.from(pendingTaskProgressSaves));
     }
-    const res = await fetch(`${API_BASE}/assessment/submit`,{
+    const endpoint = LOCAL_PREVIEW_MODE ? "/assessment/preview-results?local_preview=1" : "/assessment/submit";
+    const res = await fetch(`${API_BASE}${endpoint}`,{
+      signal,
       method:"POST", headers:{"Content-Type":"application/json", ...(CURRENT_USER_ID ? ACCOUNT_HEADERS : {})},
       body: JSON.stringify({
         task_results: taskResults.filter(Boolean),
         affected_side: AFFECTED_SIDE,
         assessment_package: ASSESSMENT_PACKAGE,
         assigned_task_ids: tasks.map(task => task.id),
-        motion_data: {
+        ...(!LOCAL_PREVIEW_MODE ? {motion_data: {
           schema_version: "1.0",
           coordinate_space: {
             pose_2d: "camera_normalized_unmirrored",
             pose_world_3d: "mediapipe_estimated_world_landmarks",
             hand_2d: "camera_normalized_unmirrored",
           },
-          camera_projection: {
-            source_width: video.videoWidth,
-            source_height: video.videoHeight,
-            display_width: cameraFrame.clientWidth,
-            display_height: cameraFrame.clientHeight,
-            fit: CAMERA_FIT_MODE,
-            device_class: CAMERA_DEVICE_CLASS,
-            mirrored_for_patient: true,
-          },
+          camera_projection: completedProjection,
           sample_interval_ms: MOTION_SAMPLE_INTERVAL_MS,
           truncated: motionFrames.length >= MAX_MOTION_FRAMES,
           frames: motionFrames,
-        },
+        }} : {}),
       })
     });
     if(!res.ok){
@@ -9751,13 +10185,18 @@ async function finishAssessment(){
       throw new Error(`Assessment save failed (${res.status}): ${detail.slice(0, 160)}`);
     }
     const data = await res.json();
-    if(!data || !data.id) throw new Error("Assessment save response did not include an assessment id");
-    postRN({type:"assessment_complete", assessment: data});
-  }catch(e){
-    postRN({type:"assessment_error", message:String(e)});
-  }
+    if(!data || (LOCAL_PREVIEW_MODE ? !Array.isArray(data.metrics?.task_quality?.tasks) : !data.id)){
+      throw new Error("Assessment response did not include results");
+    }
+    return data;
+  },data=>{
+    postRN(LOCAL_PREVIEW_MODE
+      ? {type:"assessment_preview_complete", package_id:ASSESSMENT_PACKAGE, completed_tasks:taskResults.filter(Boolean).length, results_in_runner:true}
+      : {type:"assessment_complete", assessment:data, results_in_runner:true});
+  });
 }
 
+let lastTestingReachPoseVideoTime = null;
 function loop(){
   if(!running) return;
   const now = performance.now();
@@ -9770,7 +10209,11 @@ function loop(){
   const poseScanInterval = isHandTask()
     ? (handBackoff ? HAND_BACKOFF_POSE_SCAN_INTERVAL_MS : HAND_PACKAGE_POSE_SCAN_INTERVAL_MS)
     : POSE_SCAN_INTERVAL_MS;
-  if(cameraFrameReady && landmarker && (now - lastPoseScanTs) >= poseScanInterval){
+  if(cameraFrameReady && landmarker && (now - lastPoseScanTs) >= poseScanInterval
+    && (!seatedTestingCalibrationEnabled() || video.currentTime !== lastTestingReachPoseVideoTime)){
+    // One inference/sample per real frame: repeated frames must not fill the
+    // lap buffer before its two-second observation period has elapsed.
+    if(seatedTestingCalibrationEnabled())lastTestingReachPoseVideoTime=video.currentTime;
     let result = null;
     try{
       result = landmarker.detectForVideo(video, now);
@@ -9783,7 +10226,6 @@ function loop(){
         ? result.worldLandmarks[0]
         : null;
       computeMetrics(landmarks);
-      updateLapTargetCalibration(landmarks, now);
       const activeTask = tasks[currentTaskIdx];
       // Lock T3's mouth point while the affected hand is still at the chest.
       // Waiting until the hand covers the mouth can pull facial landmarks and
@@ -9799,14 +10241,22 @@ function loop(){
       latestPoseWorldLandmarks = null;
       landmarks = null;
     }
+    updateReachCameraQuality(result,landmarks);
+    // Wrist stability and image quality are independent checks, collected in
+    // parallel. The quality gate still has to pass before the task can start.
+    if(landmarks)updateLapTargetCalibration(landmarks,now);
+    // Segmentation masks own native resources; release after pixel analysis.
+    for(const mask of result?.segmentationMasks || [])mask.close();
   }
 
   // Hand landmarks (optional). Run at a controlled cadence so Pose + Hands do
   // not block the UI thread on every animation frame.
   const handNeeded = needsHandLandmarks();
-  const handScanInterval = handBackoff ? HAND_BACKOFF_SCAN_INTERVAL_MS : HAND_SCAN_INTERVAL_MS;
-  if(cameraFrameReady && handLandmarker && handNeeded && (now - lastHandScanTs) >= handScanInterval){
+  const handScanInterval = handToMouthTaskEnabled() ? 100 : handBackoff ? HAND_BACKOFF_SCAN_INTERVAL_MS : HAND_SCAN_INTERVAL_MS;
+  const freshHandVideo=!handToMouthTaskEnabled() || video.currentTime!==lastMouthHandVideoTime;
+  if(cameraFrameReady && handLandmarker && handNeeded && freshHandVideo && (now - lastHandScanTs) >= handScanInterval){
     lastHandScanTs = now;
+    if(handToMouthTaskEnabled())lastMouthHandVideoTime=video.currentTime;
     try{
       const hr = handLandmarker.detectForVideo(video, now);
       const affectedHand = selectAffectedHandDetection(hr, now);
@@ -9827,18 +10277,19 @@ function loop(){
   computeHandMetrics();
   tickTestingReach(landmarks,now);
   const reachFrameValid = !testingReachEnabled() || !!reachObservation(landmarks,now);
-  const mouthFrameValid=!testingMouthEnabled() || (cameraFrameReady && !!landmarks && now-lastPoseScanTs<=200 && now-lastAngleVideoAt<=250);
-  const inTarget = !calibratingAssessment && mouthCanMeasure() && mouthFrameValid && reachCanMeasure() && reachFrameValid && !correctionVoicePlaying && checkTarget(landmarks);
+  const mouthFrameValid=!testingMouthEnabled() || (cameraFrameReady && !!landmarks && reachCameraFresh(now));
+  const mouthMovementValid=updateMouthMovement(landmarks,now,mouthFrameValid);
+  const testingTarget=(testingReachEnabled() || handToMouthTaskEnabled())?testingTargetState(landmarks,now):null;
+  const inTarget = testingTarget ? testingTarget.contact : !calibratingAssessment && !correctionVoicePlaying && checkTarget(landmarks);
   if(lastPoseScanTs !== lastQualityPoseAt){
     lastQualityPoseAt = lastPoseScanTs;
     const qualityAspect=video.videoWidth>0 && video.videoHeight>0 ? video.videoWidth/video.videoHeight : 1;
-    // For Testing reach, establish the upright posture reference only after
-    // the affected hand has settled at its locked lap position. Reaching down
-    // to place the hand must not become part of the trunk-lean baseline.
-    const postureCalibrationReady=!calibratingAssessment || !testingReachEnabled() || lapTargetCalibration.ready;
+    // Testing T1 uses the same stable two-second camera window as its lap
+    // check, via updateReachCameraQuality, instead of a later 45-frame wait.
+    const postureCalibrationReady=!seatedTestingCalibrationEnabled() && reachCameraCalibrationFrameUsable();
     if(postureCalibrationReady && (calibratingAssessment || (!assessmentQuality.baseline && voiceFinishedAt === 0)))
       assessmentQuality.calibrate(landmarks, latestPoseWorldLandmarks, qualityAspect);
-    if(!calibratingAssessment && mouthCanMeasure() && mouthFrameValid && reachCanMeasure() && reachFrameValid && voiceFinishedAt > 0 && !stepCompleted && !celebrateEl.classList.contains("show")){
+    if(!calibratingAssessment && mouthCanMeasure() && mouthFrameValid && mouthMovementValid && reachCanMeasure() && reachFrameValid && voiceFinishedAt > 0 && !stepCompleted && !celebrateEl.classList.contains("show")){
       const freshHand = now - latestHandSeenAt <= 150 ? latestHandLandmarks : null;
       assessmentQuality.sample({pose:landmarks,world:latestPoseWorldLandmarks,hand:freshHand,handOpen:handOpenScore,handClosed:fistClosureScore,pinch:pinchScore,gaitAlternations:gaitAlternationCount,inTarget,now,aspectRatio:qualityAspect});
       const active=assessmentQuality.active();
@@ -9858,6 +10309,7 @@ function loop(){
   if(cameraFrameReady && video.currentTime !== lastAngleVideoTime){lastAngleVideoTime=video.currentTime;lastAngleVideoAt=performance.now();}
   const anglesFresh = cameraFrameReady && performance.now()-lastPoseScanTs <= 250 && performance.now()-lastAngleVideoAt <= 250;
   drawTestingReachAngles(anglesFresh ? landmarks : null, anglesFresh ? latestPoseWorldLandmarks : null);
+  drawTestingAssessmentAngles(anglesFresh ? landmarks : null, anglesFresh ? latestPoseWorldLandmarks : null);
   drawTestingMouth(anglesFresh ? landmarks : null, anglesFresh ? latestPoseWorldLandmarks : null);
 
   if(calibratingAssessment){
@@ -9865,7 +10317,7 @@ function loop(){
     return;
   }
 
-  if((testingMouthEnabled() && (!mouthCanMeasure() || !mouthFrameValid)) || (testingReachEnabled() && (!reachCanMeasure() || !reachFrameValid))){
+  if(testingTarget && !testingTarget.armed){
     inTargetSince=null;lastInTargetTs=0;requestAnimationFrame(loop);return;
   }
 
@@ -9879,15 +10331,14 @@ function loop(){
       lastInTargetTs = now;
       if(!stepCompleted && (now - inTargetSince) >= step.hold_ms){
         stepCompleted = true;
-        if(navigator.vibrate) navigator.vibrate(80);
-        setTimeout(()=>nextStep(false), 350);
+        completeMovementTarget(step,landmarks,now);
       }
     }else{
       // Grace: allow up to 350ms outside the zone before resetting the hold.
       if(inTargetSince != null && (now - lastInTargetTs) > 350){
         inTargetSince = null;
       }
-      if(!testingReachEnabled() && !correctionVoicePlaying) handleTargetNearMiss(landmarks, now);
+      if(!stepCompleted && !testingReachEnabled() && !correctionVoicePlaying) handleTargetNearMiss(landmarks, now);
     }
   }
   requestAnimationFrame(loop);
@@ -9897,6 +10348,11 @@ let startSetupInProgress = false;
 async function beginAssessmentSetup(){
   if(startSetupInProgress) return;
   startSetupInProgress = true;
+  const startStatus = overlay.querySelector("p");
+  if(startStatus && !LIBRARY_TEST_MODE){
+    startStatus.textContent = "";
+    startStatus.classList.add("hidden");
+  }
   startBtn.textContent = "Loading assessment...";
   startBtn.setAttribute("aria-busy", "true");
   const unlockPromise = unlockAudioPlayback();
@@ -9906,7 +10362,10 @@ async function beginAssessmentSetup(){
     await ensureTasksLoaded();
   }catch(error){
     const overlayCopy = overlay.querySelector("p");
-    if(overlayCopy) overlayCopy.textContent = String(error && error.message ? error.message : "The assessment could not load. Please try again.");
+    if(overlayCopy){
+      overlayCopy.textContent = String(error && error.message ? error.message : "The assessment could not load. Please try again.");
+      overlayCopy.classList.remove("hidden");
+    }
     overlay.classList.remove("hidden");
     startBtn.disabled = false;
     startBtn.textContent = "Try Again";
@@ -9943,11 +10402,12 @@ async function beginAssessmentSetup(){
   calibrationInstructionFinished = false;
   preAssessmentCalibrationReady = false;
   calibrationAutoStartInProgress = false;
-  testingReachTrunkBaselineWaitSince = null;
   assessmentLapTarget = null;
   assessmentLapTargetRadius = null;
   forwardReachPlacement = null;
-  if(testingReachEnabled()){
+  if(seatedTestingCalibrationEnabled()){
+    resetReachCameraQuality();
+    lastTestingReachPoseVideoTime=null;
     assessmentQuality.trunkLeanBaselineFrames=[];
     assessmentQuality.trunkLeanBaseline=null;
     assessmentQuality.baselines=[];
@@ -9961,9 +10421,11 @@ async function beginAssessmentSetup(){
   if(calibratingAssessment){
     ui.classList.add("hidden");
     calibrationOverlay.classList.remove("hidden");
+    calibrationOverlay.classList.toggle('testingReachCalibration',seatedTestingCalibrationEnabled());
     calibrationTitle.textContent = "Preparing your camera";
     calibrationLead.textContent = "Sit still with your affected hand resting on your lap while the camera and movement model get ready.";
-    if(testingReachEnabled()){
+    if(seatedTestingCalibrationEnabled()){
+      calibrationQuality.classList.remove('hidden');
       calibrationSeat.querySelector("span:last-child").textContent = "Affected hand is visible";
       calibrationLap.querySelector("span:last-child").textContent = "Hold your hand still on your lap for 2 seconds";
     }
@@ -10014,9 +10476,63 @@ startBtn.addEventListener("click", beginAssessmentSetup);
 if(window.__rehynStartRequested) void beginAssessmentSetup();
 if((LIBRARY_TEST_MODE || WALKING_TEST_MODE) && !window.__rehynStartRequested) void beginAssessmentSetup();
 
+// Presentation only: smoothly fill one ring using the actual camera checks
+// and lap-hold progress. Never show completion until the calibration is ready.
+const calibrationRing = document.getElementById("calibrationRing");
+const calibrationRingFill = document.getElementById("calibrationRingFill");
+const calibrationRingTip = document.getElementById("calibrationRingTip");
+function syncCalibrationRing(){
+  if(!calibrationRing || !calibrationRingFill) return;
+  if(calibrationOverlay.classList.contains("hidden") || calibrationOverlay.classList.contains("testingReachCalibration")){
+    calibrationRing.classList.remove("complete", "tracking");
+    calibrationRingFill.style.strokeDashoffset = "100";
+    if(calibrationRingTip) calibrationRingTip.style.transform = "rotate(-90deg)";
+    return;
+  }
+  const complete = preAssessmentCalibrationReady;
+  const checks = [calibrationCamera, calibrationArm, calibrationSeat];
+  const passed = checks.filter(element => element.classList.contains("done")).length;
+  const samples = lapTargetCalibration.samples || [];
+  const elapsed = samples.length > 1 ? samples[samples.length - 1].t - samples[0].t : 0;
+  const lapProgress = calibrationLap.classList.contains("done") ? 1
+    : Math.max(0, Math.min(1, elapsed / LAP_CALIBRATION_MIN_MS));
+  const progress = complete ? 1 : Math.min(.95, (passed + lapProgress) / 4);
+  calibrationRingFill.style.strokeDashoffset = String((1 - progress) * 100);
+  if(calibrationRingTip) calibrationRingTip.style.transform = `rotate(${progress * 360 - 90}deg)`;
+  calibrationRing.classList.toggle("tracking", passed === checks.length && !complete);
+  calibrationRing.classList.toggle("complete", complete);
+}
+(function calibrationRingFrame(){
+  syncCalibrationRing();
+  requestAnimationFrame(calibrationRingFrame);
+})();
+
 walkingVideoInput.addEventListener("click", () => {
-  setWalkingCaptureStatus("Choose or record a walking video on this device.");
+  setWalkingCaptureStatus("");
 });
+
+// Presentation only: the Upload / Record tabs share the same file input and
+// acceptance pipeline. "Record now" only asks the phone to open its camera
+// (the capture attribute); desktop browsers show the normal file picker.
+const walkingModeTabs = document.getElementById("walkingModeTabs");
+const walkingChooseVideoLabel = document.getElementById("walkingChooseVideoLabel");
+function setWalkingPickerMode(mode){
+  const record = mode === "record";
+  walkingCapture.dataset.walkingMode = record ? "record" : "upload";
+  if(record) walkingVideoInput.setAttribute("capture", "environment");
+  else walkingVideoInput.removeAttribute("capture");
+  if(walkingChooseVideoLabel) walkingChooseVideoLabel.textContent = record ? "Open camera" : "Choose video";
+  if(walkingModeTabs) walkingModeTabs.querySelectorAll("button[data-walking-mode]").forEach(tab => {
+    const selected = tab.dataset.walkingMode === walkingCapture.dataset.walkingMode;
+    tab.classList.toggle("selected", selected);
+    tab.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+}
+if(walkingModeTabs) walkingModeTabs.addEventListener("click", event => {
+  const tab = event.target.closest("button[data-walking-mode]");
+  if(tab) setWalkingPickerMode(tab.dataset.walkingMode);
+});
+setWalkingPickerMode("upload");
 
 function isWalkingVideoFile(file){
   if(!file) return false;
@@ -10062,7 +10578,7 @@ async function processWalkingVideoFile(file, source="picker"){
       return;
     }
     setWalkingCaptureStatus(validation.message, "good");
-    if(!LIBRARY_TEST_MODE){
+    if(!LIBRARY_TEST_MODE && !LOCAL_PREVIEW_MODE){
       await playVoice("The walking video is saved as part of your assessment record. Thank you. Your survey identifies the affected area and side, and your assessment is now complete.");
     }
     setWalkingCaptureStatus(LIBRARY_TEST_MODE
@@ -10264,7 +10780,7 @@ from backend.testing_mouth_voice_lines import CALIBRATION as MOUTH_CALIBRATION, 
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", "<script>window.MOUTH_TEST_VOICE=" + json.dumps({"calibration":MOUTH_CALIBRATION,"steps":MOUTH_STEPS,"near":MOUTH_NEAR,"lines":MOUTH_LINES}) + ";</script></head>")
 
 # Testing-only support, adaptation and narration share the existing runner geometry.
-for _testing_script in ("testing_reach.js", "reach_voice.js", "testing_mouth.js"):
+for _testing_script in ("testing_reach.js", "testing_reach_camera_quality.js", "reach_voice.js", "testing_mouth.js"):
     POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", "<script>" + (ROOT_DIR / _testing_script).read_text(encoding="utf-8") + "</script></head>")
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('<div id="stage">', '<div id="stage">' + (ROOT_DIR / "testing_reach_ui.html").read_text(encoding="utf-8"), 1)
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('let startSetupInProgress = false;', (ROOT_DIR / "testing_reach_flow.js").read_text(encoding="utf-8") + '\nlet startSetupInProgress = false;', 1)
@@ -10273,10 +10789,15 @@ POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('let startSetupInProgress = false;',
 
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('let startSetupInProgress = false;', (ROOT_DIR / "local_assessment_video.js").read_text(encoding="utf-8") + '\nlet startSetupInProgress = false;', 1)
 
+POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('<div id="stage">', '<div id="stage">' + (ROOT_DIR / "assessment_completion_ui.html").read_text(encoding="utf-8"), 1)
+POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", "<script>" + (ROOT_DIR / "assessment_completion.js").read_text(encoding="utf-8") + "</script></head>")
+
 _reach_target_script = (ROOT_DIR / "reach_target.js").read_text(encoding="utf-8")
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", "<script>" + _reach_target_script + "</script></head>")
 _reach_angles_script = (ROOT_DIR / "reach_angles.js").read_text(encoding="utf-8")
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", "<script>" + _reach_angles_script + "</script></head>")
+_testing_assessment_diagnostics_script = (ROOT_DIR / "testing_assessment_diagnostics.js").read_text(encoding="utf-8")
+POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", "<script>" + _testing_assessment_diagnostics_script + "</script></head>")
 _trunk_lean_metrics_script = (ROOT_DIR.parent / "testing" / "trunk-lean-comparison" / "trunk_lean_metrics.js").read_text(encoding="utf-8")
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", "<script>" + _trunk_lean_metrics_script + "</script></head>")
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('<div id="lapStatus"', '''<aside id="testingReachAngles" class="hidden" aria-label="Live seated forward reach angles">
@@ -10291,7 +10812,7 @@ POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('<div id="lapStatus"', '''<aside id=
       </div>
     </div>
   </div>
-  <small>Each cue must stay above its threshold for 0.5 seconds to affect this step's score. These are camera estimates, not anatomical angles.</small>
+  <small>A cue must meet its threshold for 0.5 seconds to confirm trunk lean. Any confirmed compensation sets the final exercise score to 15/100. These are camera estimates, not anatomical angles.</small>
 </aside><div id="lapStatus"''', 1)
 _assessment_quality_script = (ROOT_DIR / "assessment_quality.js").read_text(encoding="utf-8")
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", """<style>
@@ -10306,13 +10827,35 @@ POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace("</head>", """<style>
 #celebrate h2,#celebrate p{margin:0}
 #celebrate .msg{max-width:640px}
 @media(max-width:600px){#celebrate{gap:10px}#celebrate .star{font-size:36px}#celebrate h2{font-size:23px}}
+/* Between-task celebration: green tick disc, one title, one "n of N · Next" line. */
+#celebrate{background:radial-gradient(circle at 50% 42%,rgba(36,77,60,.55) 0,rgba(12,16,14,.7) 420px,rgba(12,16,14,.85) 100%);gap:0}
+#celebrate .star,#celebrate .msg,#celebrate .dotsMini,#celebrate .confetti{display:none}
+.celebrateMark{position:relative;width:144px;height:144px;margin-bottom:36px;flex-shrink:0}
+.celebrateRipples{position:absolute;left:50%;top:50%;width:400px;height:400px;margin:-200px 0 0 -200px;overflow:visible;pointer-events:none}
+.celebrateRipple{fill:none;stroke:#7FE5A3;stroke-width:3;transform-box:fill-box;transform-origin:center;animation:celebrateRipple 2.8s ease-out infinite}
+.celebrateRipple2{animation-delay:1.4s}
+.celebrateTick{position:absolute;inset:0;border-radius:999px;background:#7FE5A3;color:#0c100e;display:flex;align-items:center;justify-content:center;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.celebrateTick svg{width:72px;height:72px}
+#celebrate.show .celebrateTick{animation:celebratePop .7s cubic-bezier(.2,.7,.2,1) both}
+#celebrate h2{font-size:40px;font-weight:800;line-height:48px;color:#fff}
+#celebrate.show h2{animation:celebrateRise .6s .35s cubic-bezier(.2,.7,.2,1) both}
+#celebrate .next{font-size:16px;line-height:22px;color:#bcc2ba;font-weight:500;letter-spacing:0;text-transform:none;margin-top:10px;max-width:520px}
+#celebrate.show .next{animation:celebrateRise .6s .6s cubic-bezier(.2,.7,.2,1) both}
+@keyframes celebrateRipple{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.6);opacity:0}}
+@keyframes celebratePop{0%{opacity:0;transform:scale(.6)}60%{transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}
+@keyframes celebrateRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media(max-width:600px){#celebrate h2{font-size:30px;line-height:36px}.celebrateMark{width:120px;height:120px;margin-bottom:28px}.celebrateTick svg{width:60px;height:60px}}
+@media (prefers-reduced-motion:reduce){#celebrate *{animation:none!important}}
 </style><script>""" + _assessment_quality_script + "\nwindow.REHYN_ASSESSMENT_RUBRIC=" + json.dumps({"version": ASSESSMENT_QUALITY_VERSION, "compensations": ASSESSMENT_COMPENSATIONS, "tasks": ASSESSMENT_RUBRICS}) + ";</script></head>")
 POSE_RUNNER_HTML = POSE_RUNNER_HTML.replace('<div id="ui">', '<div id="ui"><div id="assessmentQualityStatus" role="status" aria-live="polite"></div>')
 
 
 @api_router.get("/pose/runner", response_class=HTMLResponse)
-async def pose_runner():
-    return HTMLResponse(content=POSE_RUNNER_HTML)
+async def pose_runner(request: Request):
+    html = POSE_RUNNER_HTML
+    if is_local_assessment_preview(request):
+        html = html.replace("const LOCAL_PREVIEW_MODE = false;", "const LOCAL_PREVIEW_MODE = true;", 1)
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
 
 
 # ============ Rehab Runner: per-exercise pose-guided reps with form feedback ============

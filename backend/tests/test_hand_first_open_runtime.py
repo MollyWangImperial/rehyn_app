@@ -25,8 +25,8 @@ function element(id){
     const classes = new Set();
     elements.set(id, {style:{},dataset:{},width:640,height:480,clientWidth:640,clientHeight:480,
       readyState:0,videoWidth:0,videoHeight:0,
-      classList:{add:(...ks)=>ks.forEach(k=>classes.add(k)),remove:(...ks)=>ks.forEach(k=>classes.delete(k)),contains:k=>classes.has(k)},
-      addEventListener(){},appendChild(){},getContext:()=>ctx,querySelector:()=>null,
+      classList:{add:(...ks)=>ks.forEach(k=>classes.add(k)),remove:(...ks)=>ks.forEach(k=>classes.delete(k)),contains:k=>classes.has(k),toggle(k,on){on?classes.add(k):classes.delete(k);}},
+      addEventListener(){},appendChild(){},append(){},after(){},setAttribute(){},getContext:()=>ctx,querySelector:()=>null,
       querySelectorAll:()=>[],removeAttribute(){},getBoundingClientRect:()=>({width:640,height:480}),
     });
   }
@@ -35,15 +35,15 @@ function element(id){
 let now=10000;
 const sandbox={URLSearchParams,console,performance:{now:()=>now},
   navigator:{userAgent:'test',maxTouchPoints:0},screen:{width:1440,height:900},
-  document:{getElementById:element,createElement:()=>element(Symbol()),body:element('body')},
+  document:{getElementById:element,querySelector:element,createElement:()=>element(Symbol()),body:element('body')},
   Audio:class{pause(){}},requestAnimationFrame:()=>{},setTimeout:(fn,delay)=>{timers.push(fn);return timers.length;},clearTimeout(){},
-  location:{origin:'http://localhost',search:`?package=initial&library_test=1&affected_side=${input.side}`},
+  location:{origin:'http://localhost',hostname:'localhost',search:`?package=initial&local_preview=1&affected_side=${input.side}`},
   addEventListener(){},ReactNativeWebView:{postMessage:v=>messages.push(JSON.parse(v))},
   PoseLandmarker:{POSE_CONNECTIONS:[]},HandLandmarker:{HAND_CONNECTIONS:[]},
 };
 sandbox.window=sandbox;
 const context=vm.createContext(sandbox), run=code=>vm.runInContext(code,context);
-run(input.quality);
+for(const script of input.support)run(script);
 run(input.script);
 sandbox.taskData=input.tasks;
 run(`tasks=taskData; currentTaskIdx=3; running=true; handLandmarker={};
@@ -131,8 +131,7 @@ def test_initial_task_four_accepts_the_first_opening(side, projection):
     result = subprocess.run(
         [node, "-e", HARNESS], input=json.dumps({
             "script": script, "tasks": tasks, "side": side, "projection": projection,
-            "quality": next((script for script in re.findall(r"<script>(.*?)</script>", html, re.S)
-                             if "window.REHYN_ASSESSMENT_RUBRIC=" in script), ""),
+            "support": re.findall(r"<script>(.*?)</script>", html[:html.index("const API_BASE =")], re.S),
         }), text=True, capture_output=True, encoding="utf-8", timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr

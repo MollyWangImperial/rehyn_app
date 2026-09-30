@@ -1,7 +1,25 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { placeSeatedForwardReachTargets, fitSeatedForwardReachTargets, screenDistance } = require('../reach_target.js');
+const { placeSeatedForwardReachTargets, fitSeatedForwardReachTargets, screenDistance, wristContact } = require('../reach_target.js');
 const near = (a, b) => assert.ok(Math.abs(a-b)<1e-10, `${a} != ${b}`);
+
+test('only the affected pose wrist counts, including the drawn boundary on portrait and landscape',()=>{
+  for(const side of ['left','right'])for(const aspect of [16/9,4/3,3/4,9/16]){
+    const target={x:.4,y:.65},radius=.1,wi=side==='left'?15:16;
+    // Other wrist and every fingertip are inside while the selected wrist is outside.
+    const p=Array.from({length:33},()=>({...target,visibility:1}));
+    p[wi]={x:.75,y:.65,visibility:1};
+    assert.ok(wristContact({landmarks:p,side,target,aspect}).distance>radius);
+    p[wi]={x:target.x+radius/Math.max(1,aspect),y:target.y,visibility:1};
+    near(wristContact({landmarks:p,side,target,aspect}).distance,radius);
+    p[wi].x+=.001;assert.ok(wristContact({landmarks:p,side,target,aspect}).distance>radius);
+    p[wi]={...target,visibility:1};assert.equal(wristContact({landmarks:p,side,target,aspect}).distance,0);
+    p[wi].visibility=.2;assert.equal(wristContact({landmarks:p,side,target,aspect}).distance,Infinity);
+    p[wi]={...target,visibility:1,presence:.1};assert.equal(wristContact({landmarks:p,side,target,aspect}).distance,Infinity);
+    p[wi].x=NaN;assert.equal(wristContact({landmarks:p,side,target,aspect}).point,null);
+  }
+  assert.equal(wristContact({landmarks:null,target:{x:.5,y:.5}}).distance,Infinity);
+});
 
 test('start follows lap; raise and hold follow shoulder, for either relative X ordering', () => {
   for (const aspect of [16/9,4/3,9/16]) for (const [lapX,shoulderX] of [[.43,.57],[.60,.42]]) {

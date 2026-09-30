@@ -5,6 +5,31 @@ const trunkLeanMetrics=require('../../testing/trunk-lean-comparison/trunk_lean_m
 const config={version:'rehyn-task-quality-1',compensations:{trunk_lean:{threshold:12},wrist_bend:{threshold:25}}};
 const rule={criteria:[{metric:'elbow_extension',target:150}],compensations:['wrist_bend']};
 
+test('Testing mouth observes compensation on return without altering normal lap scoring',()=>{
+  const returnRule={id:'T3-S4',criteria:[],compensations:[],scoring_method:'target_completion'};
+  const mouthConfig={...config,compensations:{...config.compensations,shoulder_hike:{threshold:12},head_drop:{threshold:15}}};
+  const t=new Tracker(mouthConfig,'right',{testingMouthHeadDrop:true});
+  t.reset(returnRule);t.raw=()=>({head_drop:20,shoulder_hike:0,trunk_lean:0});
+  for(let now=0;now<=1000;now+=50)t.sample({now,inTarget:true});
+  assert.ok(t.snapshot().compensations.head_drop.max_streak_ms>=500);
+  assert.equal(t.rubric.scoring_method,'target_completion');
+  assert.deepEqual(returnRule.compensations,[]);
+  const normal=new Tracker(mouthConfig,'right');normal.reset(returnRule);
+  assert.deepEqual(normal.rubric.compensations,[]);
+});
+
+test('Testing reach observes return-step compensation without changing its completion rubric',()=>{
+  const returnRule={id:'T1-S4',criteria:[],compensations:[],scoring_method:'target_completion'};
+  const t=new Tracker({...config,compensations:{...config.compensations,shoulder_hike:{threshold:12}}},'right',{testingReachTrunkLean:true});
+  t.reset(returnRule);t.raw=()=>({shoulder_hike:20});
+  for(let now=0;now<=1000;now+=50)t.sample({now,inTarget:true});
+  assert.ok(t.snapshot().compensations.shoulder_hike.max_streak_ms>=500);
+  assert.equal(t.rubric.scoring_method,'target_completion');
+  assert.deepEqual(returnRule.compensations,[]);
+  const standard=new Tracker(config,'right');standard.reset(returnRule);
+  assert.deepEqual(standard.rubric.compensations,[]);
+});
+
 test('one noisy frame, missing data and long gaps never confirm compensation',()=>{
   const t=new Tracker(config,'right');t.reset(rule);
   let bend=0;
@@ -74,6 +99,44 @@ test('normal shoulder rise and opposite shoulder drop do not become shoulder hik
   assert.deepEqual(t.active(),['shoulder_hike']);
 });
 
+
+test('T3 shoulder rise detects a hike without ear-gap shortening, while brief or absent rises do not count',()=>{
+  for(const side of ['left','right'])for(const neckGap of [.2,.3,NaN]){
+    const t=new Tracker({...config,compensations:{shoulder_hike:{threshold:12}}},side,{testingMouthHeadDrop:true});
+    let r={torso:[0,-.5,0],width:.4,screenWidth:.25,shoulderLine:0,hipLine:0,neckGap:.2,arm_elevation:40};
+    t.raw=()=>r;
+    for(let i=0;i<20;i++)t.calibrate([],[]);
+    t.reset({id:'T3-S2',criteria:[],compensations:['shoulder_hike']});
+    r={...r,shoulderLine:.35,neckGap};
+    for(let now=0;now<=400;now+=50)t.sample({now});
+    assert.deepEqual(t.active(),[],'A short rise must not trigger a warning');
+    for(let now=450;now<=650;now+=50)t.sample({now});
+    assert.deepEqual(t.active(),['shoulder_hike']);
+    assert.equal(t.snapshot().compensations.shoulder_hike.method,'world_shoulder_rise_v2');
+    t.reset({id:'T3-S2',criteria:[],compensations:['shoulder_hike']});
+    r={...r,shoulderLine:0,neckGap:.05};
+    for(let now=0;now<=650;now+=50)t.sample({now});
+    assert.deepEqual(t.active(),[],'Ear-gap shortening alone is not a shoulder rise');
+    r={...r,shoulderLine:.08,arm_elevation:90};
+    for(let now=700;now<=1400;now+=50)t.sample({now});
+    assert.deepEqual(t.active(),[],'Keep the normal arm-lifting allowance');
+    r={...r,shoulderLine:NaN};t.sample({now:1450});
+    assert.equal(t.currentMetrics.shoulder_hike,undefined,'Missing shoulder evidence must abstain');
+  }
+});
+
+test('T3 calibrates shoulder rise without model ear coordinates while retaining image head checks',()=>{
+  const t=new Tracker(config,'right',{testingReachTrunkLean:true,testingMouthHeadDrop:true,trunkLeanMetrics});
+  const pose=torsoPose();
+  pose[14]={x:.63,y:.50,z:0,visibility:.99};pose[16]={x:.60,y:.68,z:0,visibility:.99};
+  const world=structuredClone(pose);world[7]=null;world[8]=null;
+  const samples=Array.from({length:8},(_,i)=>({now:i*300,pose,world,aspect:4/3}));
+  assert.equal(t.calibrateSeatedTestingWindow(samples),true);
+  assert.ok(Number.isNaN(t.baseline.neckGap));
+  assert.ok(Number.isFinite(t.baseline.shoulderLine));
+  pose[0].visibility=.1;
+  assert.equal(t.calibrateSeatedTestingWindow(samples),false,'The separate head check still needs image landmarks');
+});
 
 test('diagnostic observations keep endpoint, peak and target fraction without changing scoring',()=>{
   const t=new Tracker(config,'right'); t.reset(rule);
@@ -154,6 +217,59 @@ function torsoPose({shoulderScale=1,hipScale=1,faceScale=1,visible=true}={}) {
   return p;
 }
 
+test('T3 distinguishes a shoulder hike from trunk lean, including both together',()=>{
+  for(const side of ['left','right'])for(const aspect of [4/3,3/4])for(const roll of [0,.25]){
+    const cfg={...config,compensations:{trunk_lean:{threshold:12},shoulder_hike:{threshold:12},head_drop:{threshold:15}}};
+    const t=new Tracker(cfg,side,{testingReachTrunkLean:true,testingMouthHeadDrop:true,trunkLeanMetrics});
+    const upright=torsoPose();
+    upright[13]={x:.37,y:.5,z:0,visibility:.99};upright[15]={x:.4,y:.68,z:0,visibility:.99};
+    upright[14]={x:.63,y:.5,z:0,visibility:.99};upright[16]={x:.6,y:.68,z:0,visibility:.99};
+    const rotate=p=>p.map(v=>{const x=(v.x-.5)*aspect,y=v.y-.5;return {...v,x:.5+(x*Math.cos(roll)-y*Math.sin(roll))/aspect,y:.5+x*Math.sin(roll)+y*Math.cos(roll)};});
+    const baselinePose=rotate(upright);
+    assert.equal(t.calibrateSeatedTestingWindow(Array.from({length:8},(_,i)=>({now:i*300,pose:baselinePose,world:upright,aspect}))),true);
+    for(const kind of ['hike','lean','both']){
+      const p=structuredClone(upright),world=structuredClone(upright);
+      if(kind!=='lean'){p[side==='left'?11:12].y=.16;world[side==='left'?11:12].y=.16;}
+      if(kind!=='hike'){
+        for(const i of [11,12])p[i].x=.5+(p[i].x-.5)*1.2;
+        for(const i of [7,8])p[i].x=.5+(p[i].x-.5)*1.1;
+      }
+      const pose=rotate(p);
+      t.reset({id:'T3-S2',criteria:[],compensations:['trunk_lean','shoulder_hike','head_drop']});
+      for(let now=0;now<=700;now+=50)t.sample({pose,world,now,aspectRatio:aspect});
+      assert.equal(t.active().includes('shoulder_hike'),kind!=='lean',`${side}/${aspect}/${roll}/${kind}: hike`);
+      assert.equal(t.active().includes('trunk_lean'),kind!=='hike',`${side}/${aspect}/${roll}/${kind}: trunk`);
+      assert.equal(t.snapshot().compensations.trunk_lean.method,'image_shoulder_expansion_v3');
+      if(kind==='hike'){
+        assert.ok(!t.active().includes('head_drop'),'A hike with a stationary head is not head lowering');
+        assert.ok(Math.abs(t.trunkLeanReadout(pose,aspect).shoulderScale-1)<1e-8);
+        if(aspect===4/3&&roll===0){
+          const old=trunkLeanMetrics.newForwardLeanEvidence(trunkLeanMetrics.metricsFromLandmarks(pose,aspect),t.trunkLeanBaseline);
+          assert.equal(old.detected,true,'Reproduces diagonal-span false trunk alarm before the fix');
+        }
+      }
+    }
+  }
+});
+
+test('Testing reach builds the same posture and trunk references from a timed low-FPS window',()=>{
+  const t=new Tracker(config,'right',{testingReachTrunkLean:true,trunkLeanMetrics});
+  const pose=torsoPose();
+  pose[14]={x:.63,y:.50,z:0,visibility:.99};
+  pose[16]={x:.60,y:.68,z:0,visibility:.99};
+  const samples=Array.from({length:8},(_,i)=>({now:i*300,pose,world:pose,aspect:4/3}));
+  assert.equal(t.calibrateTestingReachWindow(samples.slice(0,7)),false);
+  assert.equal(t.calibrateTestingReachWindow(samples.map(s=>({...s,now:s.now/2}))),false);
+  assert.equal(t.calibrateTestingReachWindow(samples.map(s=>({...s,now:100}))),false);
+  assert.equal(t.calibrateTestingReachWindow(samples.map((s,i)=>({...s,now:s.now+(i>3?1000:0)}))),false);
+  assert.equal(t.calibrateTestingReachWindow(samples),true);
+  assert.deepEqual(t.trunkLeanBaseline,trunkLeanMetrics.baselineFromSamples(samples.map(s=>trunkLeanMetrics.metricsFromLandmarks(s.pose,s.aspect))));
+  assert.ok(['width','screenWidth','neckGap','shoulderLine'].every(k=>Number.isFinite(t.baseline[k])));
+  assert.equal(t.trunkLeanBaselineFrames.length,8);
+  const hidden=structuredClone(pose);hidden[14].visibility=.2;
+  assert.equal(t.calibrateTestingReachWindow(samples.map(s=>({...s,pose:hidden}))),false);
+});
+
 test('Testing T1 uses the shared calibrated shoulder-or-face lean detector for sustained face-only evidence',()=>{
   const t=new Tracker(config,'right',{testingReachTrunkLean:true,trunkLeanMetrics});
   t.raw=()=>({torso:[0,-.5,0],width:.4,screenWidth:.2,shoulderLine:0,hipLine:0});
@@ -225,4 +341,44 @@ test('Testing T1 ignores uniform camera approach, missing torso landmarks and ol
   for(let now=0;now<=700;now+=50)t.sample({pose:torsoPose(),now,aspectRatio:1.5});
   assert.equal(t.snapshot().compensations.trunk_lean.method,undefined);
   assert.deepEqual(t.active(),['trunk_lean']);
+});
+
+
+test('T3 separates shoulder growth from face growth and ignores hip jitter, shrug, translation and face roll',()=>{
+  for(const side of ['left','right'])for(const aspect of [4/3,3/4]) {
+    const t=new Tracker({...config,compensations:{...config.compensations,head_drop:{threshold:15}}},side,
+      {testingReachTrunkLean:true,testingMouthHeadDrop:true,trunkLeanMetrics});
+    const p=torsoPose();p[14]={x:.63,y:.5,z:0,visibility:.99};p[16]={x:.6,y:.68,z:0,visibility:.99};
+    p[13]={x:.37,y:.5,z:0,visibility:.99};p[15]={x:.4,y:.68,z:0,visibility:.99};
+    assert.equal(t.calibrateSeatedTestingWindow(Array.from({length:8},(_,i)=>({now:i*300,pose:p,world:p,aspect}))),true);
+    for(const kind of ['face','trunk','both','hips','shrug','nod','lower','roll','shoulder_narrowing']) {
+      const changed=structuredClone(p);
+      if(['face','trunk','both'].includes(kind))for(const i of [7,8])changed[i].x=.5+(p[i].x-.5)*(kind==='both'?1.5:1.2);
+      if(['trunk','both'].includes(kind))for(const i of [11,12])changed[i].x=.5+(p[i].x-.5)*1.2;
+      if(kind==='hips')for(const i of [23,24]){changed[i].x=.5+(p[i].x-.5)*.7;changed[i].y+=(i===23?-.08:.08);}
+      if(kind==='shrug'){changed[11].y-=.05;changed[12].y-=.15;}
+      if(kind==='nod')changed[0].y+=.06;
+      if(kind==='lower')for(const i of [0,7,8])changed[i].y+=.10;
+      if(kind==='shoulder_narrowing')for(const i of [11,12])changed[i].x=.5+(p[i].x-.5)*.8;
+      if(kind==='roll')for(const i of [7,8]){const x=(p[i].x-.5)*aspect;changed[i].x=.5+x*Math.cos(.55)/aspect;changed[i].y=.21+x*Math.sin(.55);}
+      t.reset({id:'T3-S2',criteria:[],compensations:['head_drop','trunk_lean']});
+      for(let now=0;now<=400;now+=50)t.sample({pose:changed,world:null,now,aspectRatio:aspect});
+      assert.deepEqual(t.active(),[],'Short bursts do not count');
+      for(let now=450;now<=700;now+=50)t.sample({pose:changed,world:null,now,aspectRatio:aspect});
+      assert.equal(t.active().includes('head_drop'),['face','both'].includes(kind),`${side}/${aspect}/${kind}: head`);
+      assert.equal(t.active().includes('trunk_lean'),['trunk','both'].includes(kind),`${side}/${aspect}/${kind}: trunk`);
+      assert.equal(t.snapshot().compensations.head_drop.method,'image_face_expansion_v4');
+      assert.equal(t.snapshot().compensations.trunk_lean.method,'image_shoulder_expansion_v3');
+      changed[8].visibility=.1;t.sample({pose:changed,now:750,aspectRatio:aspect});
+      assert.ok(!Number.isFinite(t.currentMetrics.head_drop));assert.equal(t.compensations.head_drop.streak,0);
+      changed[11].visibility=.1;t.sample({pose:changed,now:800,aspectRatio:aspect});
+      assert.ok(!Number.isFinite(t.currentMetrics.trunk_lean));
+    }
+    const raw=t.raw(p,null,aspect);t.reset({id:'T3-S2',criteria:[],compensations:['head_drop']});
+    t.raw=()=>({...raw,faceScreenSpan:raw.faceScreenSpan*1.3});
+    for(let now=0;now<=300;now+=50)t.sample({now});
+    t.pauseEvidence();
+    for(let now=1000;now<=1300;now+=50)t.sample({now});
+    assert.deepEqual(t.active(),[],'Separate short movements cannot combine across an instruction');
+  }
 });

@@ -1,5 +1,6 @@
 import { authedFetch } from "@/src/auth";
 import { API_BASE as BASE } from "@/src/config";
+import { requestTestingScore } from "@/src/testingScoreRequest";
 
 export type TaskStep = {
   id: string;
@@ -310,13 +311,18 @@ export type TestingAssessmentReport = {
   recorded: false;
   clinical_measure: false;
   task: Omit<AssessmentTaskQuality["tasks"][number], "steps"> & {
+    scoring_method?: "completion_compensation_v1";
+    score_reason?: "completed_without_compensation" | "compensation_detected" | "incomplete" | "insufficient_evidence";
     adaptation_applied?: boolean;
+    score_before_compensation?: number | null;
+    compensation_override?: { score: number; detected: { step_id: string; id: string; label: string }[] } | null;
     steps: (Omit<AssessmentTaskQuality["tasks"][number]["steps"][number], "criteria" | "compensations"> & {
       scoring_method?: "target_completion";
       criteria: {
         metric: string; label: string; target: number; observed: number | null; unit: string; attainment: number | null;
         statistic_source?: "target_median" | "movement_median" | "sample_proportion" | "movement_maximum" | null;
         statistic_samples?: number | null;
+        valid_samples?: number;
         peak_elapsed_ms?: number | null;
         series?: { elapsed_ms: number; value: number; in_target: boolean }[];
       }[];
@@ -334,11 +340,10 @@ export type TestingAssessmentReport = {
 type TestingReachLearning = { success: boolean; terminal_reward: number; reductions: number; updates: { state: string; action: number; probabilities: number[]; return: number; advantage: number }[] };
 
 export async function scoreTestingAssessment(result: TestingTaskResult): Promise<TestingAssessmentReport> {
-  const response = await authedFetch("/api/testing/assessment-score", {
-    method: "POST", body: JSON.stringify(result),
-  });
-  if (!response.ok) throw new Error("Could not calculate the test results. Please retry.");
-  return response.json();
+  const body = JSON.stringify(result);
+  return requestTestingScore<TestingAssessmentReport>(signal => authedFetch("/api/testing/assessment-score", {
+    method: "POST", body, signal,
+  }));
 }
 
 export type BodyFunctionDomainSummary = {

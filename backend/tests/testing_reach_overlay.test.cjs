@@ -15,7 +15,7 @@ test('T1 Testing shows the selected arm and visible face landmarks with the ear-
   const env={ctx,canvas:{width:680,height:480},LIBRARY_TEST_MODE:testing,tasks:[{id:'T1'}],currentTaskIdx:0,AFFECTED_SIDE:side,
    sideLandmarks:(p,s)=>s==='left'?{shoulder:p[11],elbow:p[13],wrist:p[15]}:{shoulder:p[12],elbow:p[14],wrist:p[16]},
    drawingUtils:{drawLandmarks(){utils.push('landmarks')},drawConnectors(){utils.push('connectors')}},PoseLandmarker:{POSE_CONNECTIONS:[]},
-   latestHandLandmarks:null,calibratingAssessment:true,lapStatus:{classList:{add(){}}},lapTargetCalibration:{ready:false}};
+   testingMouthEnabled:()=>false,latestHandLandmarks:null,calibratingAssessment:true,lapStatus:{classList:{add(){}}},lapTargetCalibration:{ready:false}};
   vm.runInNewContext(renderer+';drawOverlay(lm)',{...env,lm});
   if(testing){assert.equal(arcs.length,14);assert.equal(lines.length,6);assert.deepEqual(utils,[]);
    assert.deepEqual(arcs.slice(0,3).map(a=>a.point[0]),(side==='left'?[11,13,15]:[12,14,16]).map(i=>lm[i].x*680));
@@ -35,7 +35,7 @@ test('T1 Testing hides low-confidence facial points and does not draw a misleadi
  const ctx={clearRect(){},save(){},restore(){},beginPath(){},stroke(){},fill(){},moveTo(...p){lines.push(p)},lineTo(...p){lines.push(p)},arc(...p){arcs.push(p)}};
  const env={ctx,canvas:{width:680,height:480},LIBRARY_TEST_MODE:true,tasks:[{id:'T1'}],currentTaskIdx:0,AFFECTED_SIDE:'right',
   sideLandmarks:p=>({shoulder:p[12],elbow:p[14],wrist:p[16]}),drawingUtils:{drawLandmarks(){},drawConnectors(){}},PoseLandmarker:{POSE_CONNECTIONS:[]},
-  latestHandLandmarks:null,calibratingAssessment:true,lapStatus:{classList:{add(){}}},lapTargetCalibration:{ready:false}};
+  testingMouthEnabled:()=>false,latestHandLandmarks:null,calibratingAssessment:true,lapStatus:{classList:{add(){}}},lapTargetCalibration:{ready:false}};
  vm.runInNewContext(renderer+';drawOverlay(lm)',{...env,lm});
  assert.equal(arcs.length,13);
  assert.equal(lines.length,4);

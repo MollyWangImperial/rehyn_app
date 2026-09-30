@@ -14,10 +14,13 @@
   const quantile = (a,q=.5) => a.length ? [...a].sort((x,y)=>x-y)[Math.floor((a.length-1)*q)] : NaN;
 
   class Tracker {
-    constructor(config, side, {peakReachAngles=false,testingReachTrunkLean=false,trunkLeanMetrics=root.TrunkLeanMetrics}={}) {
-      this.config=config;
+    constructor(config, side, {peakReachAngles=false,testingReachTrunkLean=false,testingMouthHeadDrop=false,trunkLeanMetrics=root.TrunkLeanMetrics}={}) {
+      this.config=testingMouthHeadDrop ? {...config,compensations:{...config.compensations,
+        trunk_lean:{...config.compensations.trunk_lean,threshold:12,unit:'percent'},
+        head_drop:{...config.compensations.head_drop,threshold:10,unit:'percent',label:'Head moving forward'}}} : config;
       this.peakReachAngles=peakReachAngles;
       this.testingReachTrunkLean=testingReachTrunkLean;
+      this.testingMouthHeadDrop=testingMouthHeadDrop;
       this.trunkLeanMetrics=trunkLeanMetrics;
       this.trunkLeanBaselineFrames=[];
       this.trunkLeanBaseline=null;
@@ -28,11 +31,25 @@
       this.reset(null);
     }
     reset(rubric) {
-      this.rubric=rubric;
+      // Return-to-lap still earns 100 for completion. Observe its posture too:
+      // the Testing-only final-score override applies to any of the four steps.
+      this.rubric=this.testingReachTrunkLean && rubric?.id==='T1-S4'
+        ? {...rubric,compensations:['trunk_lean','shoulder_hike']}
+        : this.testingMouthHeadDrop && rubric?.id==='T3-S4'
+        ? {...rubric,compensations:['trunk_lean','shoulder_hike','head_drop']} : rubric;
       this.measurements={}; this.observations={}; this.compensations={}; this.lastTime=null;
       this.seriesStart=null;
       this.currentMetrics={};
       this.sawClosed=false; this.openCloseCycle=0;
+    }
+    pauseEvidence() {
+      // Keep earned evidence, but never join two above-threshold runs across
+      // an instruction, a UI interaction, missing tracking or a rest period.
+      this.lastTime=null;
+      for(const c of Object.values(this.compensations)) {
+        c.streak=0;c.active=false;
+        for(const run of Object.values(c.cue_runs||{})){run.streak_ms=0;run.run_peak=null;}
+      }
     }
     raw(p,w,aspectRatio=1) {
       const a=this.a,o=this.o,r={};
@@ -53,6 +70,12 @@
         r.torso=sub(sh,hip);
         r.width=length(sub(w[11],w[12]));
         r.screenWidth=Math.hypot(p[11].x-p[12].x,p[11].y-p[12].y);
+        if(this.testingMouthHeadDrop){
+          // Use the same elevation-independent span for the visibility/scale
+          // guard, so a real hike does not invalidate its own measurement.
+          const hips=sub2D(p[24],p[23],imageAspect),shoulders=sub2D(p[12],p[11],imageAspect);
+          r.screenWidth=length(hips)>=.03 ? Math.abs((shoulders[0]*hips[0]+shoulders[1]*hips[1])/length(hips)) : NaN;
+        }
         r.shoulderLine=(w[o.s].y-w[a.s].y)/Math.max(.05,r.width);
         r.hipLine=(w[o.h].y-w[a.h].y)/Math.max(.05,r.width);
       }
@@ -60,6 +83,26 @@
       if(usable([7,8,0])) {
         const ears=midpoint(w[7],w[8]);
         r.headPitch=(w[0].y-ears.y)/Math.max(.04,length(sub(w[7],w[8])));
+      }
+      if(this.testingMouthHeadDrop) {
+        // Keep the horizontal axis from upright calibration fixed. Hip tracking
+        // jitter must not resize the torso or rotate its axis during the task.
+        if(visible([23,24])) {
+          const hips=sub2D(p[24],p[23],imageAspect),span=length(hips);
+          if(span>.03){r.shoulderAxisX=hips[0]/span;r.shoulderAxisY=hips[1]/span;}
+        }
+        if(visible([11,12])) {
+          const axis=finite(this.baseline?.shoulderAxisX)?this.baseline:r;
+          const shoulders=sub2D(p[12],p[11],imageAspect);
+          const span=Math.abs(shoulders[0]*axis.shoulderAxisX+shoulders[1]*axis.shoulderAxisY);
+          if(span>.05)r.shoulderScreenSpan=span;
+        }
+        delete r.headPitch;
+        if(visible([0,7,8])) {
+          const ears=midpoint(p[7],p[8]);
+          const earWidth=length(sub2D(p[7],p[8],imageAspect));
+          if(earWidth>.025){r.headPitch=(p[0].y-ears.y)/earWidth;r.faceScreenSpan=earWidth;}
+        }
       }
       if(usable([a.s,a.h,a.k,a.f])) {
         r.knee_extension=angle(w[a.h],w[a.k],w[a.f]);
@@ -95,17 +138,88 @@
       this.baselines.push(r);
       if(this.baselines.length>45) this.baselines.shift();
       if(this.baselines.length<15) return;
-      const keys=["width","screenWidth","shoulderLine","hipLine","neckGap","headPitch","ankle","wrist_bend"];
-      const b=Object.fromEntries(keys.map(k=>[k,quantile(this.baselines.map(x=>x[k]).filter(finite))]));
-      const directions=this.baselines.map(x=>x.torso);
+      const baseline=this.postureBaseline(this.baselines);
+      if(baseline)this.baseline=baseline;
+    }
+    postureBaseline(samples) {
+      const keys=["width","screenWidth","shoulderLine","hipLine","neckGap","headPitch","shoulderAxisX","shoulderAxisY","shoulderScreenSpan","faceScreenSpan","ankle","wrist_bend"];
+      const b=Object.fromEntries(keys.map(k=>[k,quantile(samples.map(x=>x[k]).filter(finite))]));
+      const directions=samples.map(x=>x.torso);
       b.torso=[0,1,2].map(i=>quantile(directions.map(v=>v[i])));
-      if(Math.max(...directions.map(v=>angleV(v,b.torso)))<6) this.baseline=b;
+      return Math.max(...directions.map(v=>angleV(v,b.torso)))<6 ? b : null;
+    }
+    calibrateTestingReachWindow(samples) {
+      return this.calibrateSeatedTestingWindow(samples);
+    }
+    calibrateSeatedTestingWindow(samples) {
+      // The runner supplies fresh, quality-checked frames with the wrist at
+      // the stable lap point. Use elapsed time, independent of inference FPS.
+      this.testingReachCalibrationIssue='';
+      const fail=detail=>{this.testingReachCalibrationIssue=detail;return false;};
+      if(this.testingReachTrunkLean && !this.trunkLeanMetrics)return fail('Posture reference calculation is unavailable.');
+      if(samples.length<8)return fail(`Posture reference: ${samples.length} of 8 clear frames with the wrist at the lap.`);
+      const span=samples[samples.length-1].now-samples[0].now;
+      if(span<2000)return fail(`Posture reference: ${(span/1000).toFixed(1)} of 2 seconds with the wrist at the lap.`);
+      if(samples.some((s,i)=>!finite(s.now) || (i>0 && (s.now<=samples[i-1].now || s.now-samples[i-1].now>450))))return fail('Posture reference interrupted by a tracking gap or repeated frame.');
+      const values=samples.map(s=>this.raw(s.pose,s.world,s.aspect));
+      const referenceKeys=['width','screenWidth','shoulderLine','arm_elevation','elbow_extension'];
+      if(this.testingMouthHeadDrop)referenceKeys.push('shoulderScreenSpan','faceScreenSpan','shoulderAxisX','shoulderAxisY');
+      if(!this.testingMouthHeadDrop)referenceKeys.push('neckGap');
+      if(values.some(r=>!r.torso || !referenceKeys.every(k=>finite(r[k]))))return fail('A grading measurement is unavailable in the posture reference frames.');
+      if((!this.testingReachTrunkLean || this.testingMouthHeadDrop) && values.some(r=>!finite(r.headPitch)))return fail('Head position is unavailable. Keep your nose and both ears visible.');
+      const trunkFrames=this.testingReachTrunkLean?samples.map(s=>this.trunkLeanMetrics.metricsFromLandmarks(s.pose,s.aspect)):[];
+      if(trunkFrames.some(f=>!f.valid))return fail(trunkFrames.find(f=>!f.valid)?.reason||'Shoulder/face reference landmarks are unavailable.');
+      const baseline=this.postureBaseline(values),trunkBaseline=this.testingReachTrunkLean?this.trunkLeanMetrics.baselineFromSamples(trunkFrames):null;
+      if(!baseline)return fail('Torso reference is unstable: direction must stay within 6° of its median. Keep sitting upright.');
+      if(this.testingReachTrunkLean && !trunkBaseline)return fail('The shoulder/face reference could not be recorded.');
+      this.baselines=values;this.baseline=baseline;
+      this.trunkLeanBaselineFrames=trunkFrames;this.trunkLeanBaseline=trunkBaseline;
+      return true;
     }
     trunkLeanReadout(p,aspectRatio=1) {
+      if(this.testingMouthHeadDrop)return this.sizeApproachReadout(this.raw(p,null,aspectRatio));
       if(!this.testingReachTrunkLean || !this.trunkLeanMetrics || !this.trunkLeanBaseline)
         return {supported:false,detected:false,degrees:NaN};
       const frame=this.trunkLeanMetrics.metricsFromLandmarks(p,aspectRatio);
-      return this.trunkLeanMetrics.newForwardLeanEvidence(frame,this.trunkLeanBaseline);
+      return this.trunkLeanMetrics.newForwardLeanEvidence(frame,this.trunkLeanBaseline,
+        {separateShoulderHike:this.testingMouthHeadDrop});
+    }
+    sizeApproachReadout(r) {
+      const b=this.baseline;
+      const shoulderScale=b?.shoulderScreenSpan>0 && finite(r.shoulderScreenSpan)?r.shoulderScreenSpan/b.shoulderScreenSpan:NaN;
+      const faceScale=b?.faceScreenSpan>0 && finite(r.faceScreenSpan)?r.faceScreenSpan/b.faceScreenSpan:NaN;
+      // Require real face growth. Narrowing shoulders must not create a head
+      // warning; shared upper-body enlargement is already the trunk cue.
+      const relativeFaceScale=finite(faceScale)&&shoulderScale>0?faceScale/Math.max(1,shoulderScale):NaN;
+      const trunkGrowth=finite(shoulderScale)?Math.max(0,(shoulderScale-1)*100):NaN;
+      const headGrowth=finite(relativeFaceScale)?Math.max(0,(relativeFaceScale-1)*100):NaN;
+      return {supported:finite(trunkGrowth),degrees:trunkGrowth,unit:'percent',detected:trunkGrowth>12,
+        trunkGrowth,headGrowth,shoulderScale,faceScale,relativeFaceScale};
+    }
+    postureReadout(r) {
+      // Shared by the live display and recorded evidence; no scoring mutation.
+      r={...r};const b=this.baseline;
+      if(b && r.torso && finite(r.screenWidth) && Math.abs(r.screenWidth/b.screenWidth-1)<.3) {
+        if(!this.testingReachTrunkLean || !/^T[13]-S/.test(this.rubric?.id))
+          r.trunk_lean=angleV(r.torso,b.torso);
+        if(finite(r.shoulderLine) && finite(b.shoulderLine) && (this.testingMouthHeadDrop || (finite(r.neckGap) && finite(b.neckGap)))) {
+          const rise=Math.max(0,r.shoulderLine-b.shoulderLine);
+          // T3 Testing uses shoulder rise alone. Ear movement or an unchanged
+          // ear-to-shoulder gap must not veto an otherwise measurable hike.
+          const lift=this.testingMouthHeadDrop ? rise : Math.min(rise,Math.max(0,(b.neckGap-r.neckGap)/b.width));
+          r.shoulder_hike=Math.max(0,Math.atan2(lift,.5)*180/Math.PI-(r.arm_elevation||0)*.12);
+        }
+        if(!this.testingMouthHeadDrop && finite(r.headPitch) && finite(b.headPitch))r.head_drop=Math.max(0,r.headPitch-b.headPitch)*60;
+        r.hip_hike=Math.atan2(Math.max(0,r.hipLine-b.hipLine),.5)*180/Math.PI;
+        if(finite(r.ankle) && finite(b.ankle))r.ankle_change=Math.abs(r.ankle-b.ankle);
+        if(finite(r.wrist_bend) && finite(b.wrist_bend))r.wrist_extension_change=Math.abs(r.wrist_bend-b.wrist_bend);
+      }
+      if(b && this.testingMouthHeadDrop) {
+        const size=this.sizeApproachReadout(r);
+        if(finite(size.trunkGrowth))r.trunk_lean=size.trunkGrowth;
+        if(finite(size.headGrowth))r.head_drop=size.headGrowth;
+      }
+      return r;
     }
     sample({pose,world,hand,handOpen,handClosed,pinch,gaitAlternations,inTarget,now,aspectRatio=1}) {
       if(!this.rubric) return;
@@ -113,7 +227,7 @@
       const dt=this.lastTime===null ? 0 : clamp(now-this.lastTime,0,100);
       const gap=this.lastTime!==null && now-this.lastTime>200;
       this.lastTime=now;
-      const r=this.raw(pose,world,aspectRatio), b=this.baseline;
+      const r=this.postureReadout(this.raw(pose,world,aspectRatio));
       const handValid=hand && hand.length===21 && hand.every(p=>p && finite(p.x) && finite(p.y));
       if(handValid) {
         r.hand_open=handOpen; r.hand_closed=handClosed; r.pinch=pinch;
@@ -123,22 +237,7 @@
       }
       if(r.torso) r.target_control=inTarget ? 1 : 0;
       if(finite(r.step_distance)) r.gait_alternations=gaitAlternations;
-      if(b && r.torso && finite(r.screenWidth) && Math.abs(r.screenWidth/b.screenWidth-1)<.3) {
-        if(!this.testingReachTrunkLean || !/^T1-S/.test(this.rubric.id))
-          r.trunk_lean=angleV(r.torso,b.torso);
-        // Subtract normal elevation-related shoulder rise. Require both line
-        // elevation and neck shortening so opposite shoulder drop alone is not a shrug.
-        if(finite(r.neckGap) && finite(b.neckGap)) {
-          const rise=Math.max(0,r.shoulderLine-b.shoulderLine);
-          const shortened=Math.max(0,(b.neckGap-r.neckGap)/b.width);
-          r.shoulder_hike=Math.max(0,Math.atan2(Math.min(rise,shortened),.5)*180/Math.PI-(r.arm_elevation||0)*.12);
-        }
-        r.hip_hike=Math.atan2(Math.max(0,r.hipLine-b.hipLine),.5)*180/Math.PI;
-        if(finite(r.headPitch) && finite(b.headPitch)) r.head_drop=Math.max(0,r.headPitch-b.headPitch)*60;
-        if(finite(r.ankle) && finite(b.ankle)) r.ankle_change=Math.abs(r.ankle-b.ankle);
-        if(finite(r.wrist_bend) && finite(b.wrist_bend)) r.wrist_extension_change=Math.abs(r.wrist_bend-b.wrist_bend);
-      }
-      const comparisonLean=this.testingReachTrunkLean && /^T1-S/.test(this.rubric.id);
+      const comparisonLean=this.testingReachTrunkLean && !this.testingMouthHeadDrop && /^T[13]-S/.test(this.rubric.id);
       if(comparisonLean) {
         const evidence=this.trunkLeanReadout(pose,aspectRatio);
         if(evidence.supported && finite(evidence.degrees)) {
@@ -182,8 +281,11 @@
       for(const id of this.rubric.compensations) {
         const c=this.compensations[id] ||= {eligible_ms:0,max_value:0,max_streak_ms:0,streak:0,active:false};
         const comparison=id==="trunk_lean" && comparisonLean;
+        if(id==="head_drop" && this.testingMouthHeadDrop)c.method="image_face_expansion_v4";
+        if(id==="trunk_lean" && this.testingMouthHeadDrop)c.method="image_shoulder_expansion_v3";
+        if(id==="shoulder_hike" && this.testingMouthHeadDrop)c.method="world_shoulder_rise_v2";
         if(comparison) {
-          c.method="pelvis_normalized_shoulder_or_face_v1";
+          c.method=this.testingMouthHeadDrop ? "pelvis_axis_shoulder_or_face_v2" : "pelvis_normalized_shoulder_or_face_v1";
           const cues=r.trunk_lean_evidence?.cues;
           if(finite(cues?.pelvisNormalizedShoulderScale)) c.shoulder_peak=Math.max(c.shoulder_peak||0,cues.pelvisNormalizedShoulderScale);
           if(finite(cues?.pelvisNormalizedFaceScale)) c.face_peak=Math.max(c.face_peak||0,cues.pelvisNormalizedFaceScale);

@@ -58,8 +58,67 @@ def test_face_only_comparison_lean_reduces_testing_reach_score():
     assert check["status"] == "detected"
     assert check["face_threshold"] == 7
     assert check["face_peak"] == 8.1
-    assert step["score"] == 80
-    assert report(data, RULES)["task"]["score"] == 95
+    assert step["score"] == 100
+    assert report(data, RULES)["task"]["score"] == 15
+    assert report(data, RULES)["task"]["score_before_compensation"] == 100
 
     face_only.pop("method")
     assert report(data, RULES)["task"]["steps"][1]["score"] == 100
+
+
+def test_one_or_multiple_compensations_override_the_entire_exercise():
+    for ids in (("trunk_lean",), ("shoulder_hike",), ("trunk_lean", "shoulder_hike")):
+        data = attempt(2, True)
+        for cid in ids:
+            data["steps"][0]["metrics"]["quality"]["compensations"][cid].update(max_value=20, max_streak_ms=600)
+        task = report(data, RULES)["task"]
+        assert [s["score"] for s in task["steps"]] == [38, 38, 38, 100]
+        assert task["score_before_compensation"] == 53.5
+        assert task["score"] == task["earned_score"] == 15
+        assert len(task["compensation_override"]["detected"]) == len(ids)
+
+
+def test_exact_override_even_for_low_average_and_brief_noise_does_not_count():
+    data = attempt()
+    for step in data["steps"]:
+        step["completed"] = False
+        for measurement in step["metrics"]["quality"]["measurements"].values():
+            measurement["value"] = 0
+    first = data["steps"][0]
+    check = first["metrics"]["quality"]["compensations"]["shoulder_hike"]
+    check.update(max_value=20, max_streak_ms=600)
+    assert report(data, RULES)["task"]["score_before_compensation"] == 0
+    assert report(data, RULES)["task"]["score"] == 15
+    check["max_streak_ms"] = 499
+    assert report(data, RULES)["task"]["compensation_override"] is None
+    assert report(data, RULES)["task"]["score"] == 0
+
+
+def test_testing_requires_both_compensation_checks_and_keeps_standard_assessment_unchanged():
+    from backend.assessment_quality import score_assessment
+    data = attempt()
+    checks = data["steps"][1]["metrics"]["quality"]["compensations"]
+    checks["shoulder_hike"].update(max_value=20, max_streak_ms=600)
+    assert score_assessment([data], RULES)["tasks"][0]["steps"][1]["score"] == 80
+    del checks["trunk_lean"]
+    assert report(data, RULES)["task"]["steps"][1]["score"] is None
+    assert report(data, RULES)["task"]["score"] == 15
+    assert report(data, RULES)["task"]["score_before_compensation"] is None
+
+
+def test_compensation_override_applies_without_adaptation_metadata():
+    data = attempt()
+    for step in data["steps"]:
+        del step["metrics"]["testing_reach"]
+    data["steps"][2]["metrics"]["quality"]["compensations"]["shoulder_hike"].update(max_value=18, max_streak_ms=700)
+    assert report(data, RULES)["task"]["score"] == 15
+
+
+def test_compensation_during_return_overrides_total_but_keeps_lap_points():
+    data = attempt()
+    data["steps"][3]["metrics"]["quality"]["compensations"]["shoulder_hike"] = {
+        "eligible_ms": 1000, "max_value": 20, "max_streak_ms": 700}
+    task = report(data, RULES)["task"]
+    assert task["steps"][3]["score"] == 100
+    assert task["score"] == 15
+    assert task["compensation_override"]["detected"][0]["step_id"] == "T1-S4"

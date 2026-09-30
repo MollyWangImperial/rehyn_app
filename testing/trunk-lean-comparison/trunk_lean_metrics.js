@@ -21,6 +21,7 @@
     "trunk_depth_tilt",
     "torso_length",
     "shoulder_width_corrected",
+    "shoulder_span_pelvis_axis",
     "hip_width_corrected",
     "torso_length_corrected",
     "torso_area_corrected",
@@ -101,6 +102,16 @@
     const torsoLength = Math.max(0.04, Math.hypot(midShoulder.x - midHip.x, midShoulder.y - midHip.y));
     const correctedShoulderWidth = Math.max(0.03, distance2d(core.leftShoulder, core.rightShoulder, aspect));
     const correctedHipWidth = Math.max(0.03, distance2d(core.leftHip, core.rightHip, aspect));
+    const xScale = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+    const hipX = (core.rightHip.x - core.leftHip.x) * xScale;
+    const hipY = core.rightHip.y - core.leftHip.y;
+    const hipSpan = Math.hypot(hipX, hipY);
+    // A raised shoulder lengthens the diagonal shoulder-to-shoulder line.
+    // Its projection onto the pelvis axis removes that elevation component.
+    const shoulderSpanPelvisAxis = hipSpan >= 0.03 ? Math.abs(
+      ((core.rightShoulder.x - core.leftShoulder.x) * xScale * hipX
+        + (core.rightShoulder.y - core.leftShoulder.y) * hipY) / hipSpan,
+    ) : NaN;
     const correctedTorsoLength = Math.max(0.04, distance2d(midShoulder, midHip, aspect));
     const earLeft = landmarks[LANDMARK.leftEar];
     const earRight = landmarks[LANDMARK.rightEar];
@@ -125,6 +136,7 @@
         ? radToDeg(Math.asin(clamp(depthDifference / Math.max(0.05, torsoLength), -1, 1)))
         : NaN,
       shoulder_width_corrected: correctedShoulderWidth,
+      shoulder_span_pelvis_axis: shoulderSpanPelvisAxis >= 0.03 ? shoulderSpanPelvisAxis : NaN,
       hip_width_corrected: correctedHipWidth,
       torso_length_corrected: correctedTorsoLength,
       torso_area_corrected: polygonArea(
@@ -203,12 +215,13 @@
     return radToDeg(Math.asin(clamp(distanceFactor * (1 - 1 / scale), 0, 1)));
   }
 
-  function newForwardLeanEvidence(raw, baseline) {
+  function newForwardLeanEvidence(raw, baseline, {separateShoulderHike = false} = {}) {
     if (!raw || !baseline || !raw.valid || !baseline.valid) {
       return {degrees: NaN, detected: false, supported: false, reason: "A calibrated torso pose is required."};
     }
-    const width0 = Number(baseline.shoulder_width_corrected);
-    const width = Number(raw.shoulder_width_corrected);
+    const widthField = separateShoulderHike ? "shoulder_span_pelvis_axis" : "shoulder_width_corrected";
+    const width0 = Number(baseline[widthField]);
+    const width = Number(raw[widthField]);
     const hip0 = Number(baseline.hip_width_corrected);
     const hip = Number(raw.hip_width_corrected);
     const pelvisScale = hip0 > 0 && hip > 0 ? hip / hip0 : NaN;
@@ -239,6 +252,7 @@
     else if (supported) supportReason = "Shoulder is within 12 degrees and face is below 7 degrees.";
 
     return {
+      method: separateShoulderHike ? "pelvis_axis_shoulder_or_face_v2" : "pelvis_normalized_shoulder_or_face_v1",
       degrees,
       detected,
       supported,

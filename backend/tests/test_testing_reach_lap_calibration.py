@@ -2,6 +2,7 @@
 import os
 import re
 import subprocess
+import pytest
 from pathlib import Path
 
 os.environ.setdefault("MONGO_URL", "mongodb://127.0.0.1:27017")
@@ -10,8 +11,10 @@ os.environ.setdefault("DB_NAME", "rehyn_testing_reach_lap_calibration_test")
 from backend import server
 
 
-def test_testing_reach_locks_a_stable_wrist_after_two_seconds_without_hip_or_face():
+@pytest.mark.parametrize("task_id", ["T1", "T3"])
+def test_testing_reach_locks_a_stable_wrist_after_two_seconds_without_hip_or_face(task_id):
     names = [
+        "seatedTestingCalibrationEnabled",
         "distance", "midpoint", "mirrorX", "sideLandmarks", "landmarkIsUsable",
         "landmarkIsInFrame", "medianValue", "shoulderWidth", "isLapTarget",
         "currentTaskLapStep", "upcomingLapStep", "newLapTargetCalibration",
@@ -38,6 +41,7 @@ const TESTING_REACH_LAP_MIN_MS=2000,LAP_CALIBRATION_MIN_SAMPLES=8,LAP_CALIBRATIO
 const video={readyState:2,videoWidth:640,videoHeight:480};
 const events=[];function postRN(event){events.push(event);}
 function testingReachEnabled(){return true;}
+function testingMouthEnabled(){return false;}
 function pose(wristX=.42){
  const lm=Array.from({length:33},()=>({x:.5,y:.5,visibility:0}));
  lm[11]={x:.65,y:.3,visibility:1};lm[12]={x:.4,y:.3,visibility:1};
@@ -82,8 +86,38 @@ reset();const missing=pose();missing[16].visibility=0;
 for(let now=0;now<=3000;now+=50)updateLapTargetCalibration(missing,now);
 assert.equal(lapTargetCalibration.ready,false);
 assert.equal(lapCalibrationDiagnostic.reason,'affected_hand_not_visible');
-console.log('stable two-second affected wrist, missing torso, movement, tracking loss, and deferred placement passed');
+// Regression: 240 ms left the old 2.1 s rolling window permanently at 1.92 s;
+// 300 ms reset the old 250 ms tracking-gap check on every usable frame.
+for(const interval of [240,300,400]){
+ reset();let lockedAt=null;
+ for(let now=0;now<=3200;now+=interval){
+   updateLapTargetCalibration(pose(),now);
+   if(lapTargetCalibration.ready){lockedAt=now;break;}
+ }
+ assert.ok(lockedAt>=2000 && lockedAt<=2800,`stable lap at ${interval} ms cadence: ${lockedAt}`);
+}
+// One model outlier must not discard a genuinely stable two-second hold.
+reset();for(let now=0;now<=2000;now+=50)updateLapTargetCalibration(pose(now===1000?.59:.42),now);
+assert.equal(lapTargetCalibration.ready,true);
+assert.equal(lapTargetCalibration.target.x,.42);
+// Prolonged loss cannot bridge two short holds.
+reset();for(let now=0;now<=1000;now+=100)updateLapTargetCalibration(pose(),now);
+for(let now=2000;now<=3000;now+=100)updateLapTargetCalibration(pose(),now);
+assert.equal(lapTargetCalibration.ready,false);
+// Reframing after a locked lap updates it; an isolated noisy frame does not.
+reset();for(let now=0;now<=2000;now+=50)updateLapTargetCalibration(pose(),now);
+updateLapTargetCalibration(pose(.59),2050);updateLapTargetCalibration(pose(),2100);
+assert.equal(lapTargetCalibration.ready,true);
+for(let now=2200;now<=2800;now+=100)updateLapTargetCalibration(pose(.59),now);
+assert.equal(lapTargetCalibration.ready,false);
+console.log('stable wrist, low FPS, isolated outlier, movement, tracking loss and reframing passed');
 '''
-    result = subprocess.run(["node", "-e", script], text=True, capture_output=True, timeout=20)
+    if task_id == "T3":
+        script = script.replace("id:'T1'", "id:'T3'").replace("id:'T1-S4'", "id:'T3-S4'")
+        script = script.replace("function testingReachEnabled(){return true;}", "function testingReachEnabled(){return false;}")
+        script = script.replace("function testingMouthEnabled(){return false;}", "function testingMouthEnabled(){return true;}\nconst mouthTargetCalibration={locked:true};")
+        script = script.replace("assert.equal(forwardReachPlacement.ready,true);", "assert.equal(forwardReachPlacement,null);")
+        script = script.replace("assert.equal(lapCalibrationDiagnostic.reason,'shoulders_not_visible');", "assert.ok(lapTargetCalibration.ready);")
+    result = subprocess.run(["node", "-"], input=script, text=True, capture_output=True, timeout=20)
     assert result.returncode == 0, result.stderr
     assert "passed" in result.stdout

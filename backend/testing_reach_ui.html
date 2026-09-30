@@ -7,14 +7,28 @@
 #reachControls button{padding:8px;border:1px solid #accbb8;border-radius:6px;color:#fff;background:#174a3e;margin:4px;cursor:pointer}
 #reachControls label{display:block}#reachVoiceState{font-size:12px;margin:6px 0}#reachDifficulty{font-weight:700}
 #reachGuidance{border-top:1px solid rgba(172,203,184,.4);margin-top:8px;padding-top:8px;color:#fff;font-size:12px;line-height:1.4;max-height:120px;overflow:auto}
+#reachCameraQuality{color:#ffe3a0;font-size:13px;line-height:1.5;margin-top:8px}
+#testingAssessmentAngles{position:absolute;top:calc(80px + env(safe-area-inset-top,0px));left:16px;z-index:4;pointer-events:none;box-sizing:border-box;width:min(375px,calc(100% - 32px));max-height:56vh;overflow:auto;padding:12px;background:rgba(5,25,23,.91);color:#f4fbf7;border-radius:8px;font-size:12px;line-height:1.4}
+#testingAssessmentAngles h3{margin:0 0 3px;font-size:16px;color:#80f0ba}#testingAssessmentAngles b{color:#67e8f9}#testingAssessmentAngles p{margin:5px 0;white-space:pre-line}#testingAssessmentAngles .testingDivider{border-top:1px solid rgba(255,255,255,.24);padding-top:6px;margin-top:6px}
+@media(max-width:650px){#calibrationOverlay.testingReachCalibration{padding-top:180px;overflow:auto}}
 @media(max-width:650px){#reachControls{top:8px;right:8px;max-width:210px;font-size:12px}#reachSupportPanel{align-items:flex-start;padding-top:200px}#reachSupportPanel .reachCard{padding:20px}#reachSupportPanel h2{font-size:24px}#reachSupportPanel p{font-size:16px}#testingReachAngles{top:195px;width:min(330px,calc(100% - 32px))}}
 </style>
+<aside id="testingAssessmentAngles" class="hidden" aria-label="Live assessment measurements">
+  <h3 id="testingAssessmentTitle">Live measurements</h3>
+  <div id="testingAssessmentStep"></div>
+  <p id="testingAssessmentCriteria"></p>
+  <p id="testingAssessmentAnglesText" class="testingDivider"></p>
+  <p id="testingAssessmentPosture" class="testingDivider"></p>
+  <p id="testingAssessmentNote" class="testingDivider"></p>
+</aside>
 <div id="reachSupportPanel" class="hidden" role="dialog" aria-modal="true" aria-labelledby="reachSupportTitle">
   <section class="reachCard"><h2 id="reachSupportTitle"></h2><p id="reachSupportCopy"></p><div id="reachSupportActions"></div></section>
 </div>
 <div id="reachControls" class="hidden">
   <div id="reachDifficulty">Seated Forward Reach · Testing</div>
   <label><input type="checkbox" id="reachVoiceOn" checked> Molly voice guidance</label><div id="reachVoiceState">Molly voice</div>
+  <button id="reachReplay" class="hidden">Resume Molly voice</button>
   <button id="reachPause">Pause / stop</button><button id="reachAssistance">Help is being used</button>
   <div id="reachGuidance" class="hidden" role="status" aria-live="polite"></div>
+  <div id="reachCameraQuality" class="hidden" role="status" aria-live="polite"></div>
 </div>

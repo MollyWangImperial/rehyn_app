@@ -12,6 +12,7 @@ from backend import server
 
 def test_patient_relative_target_calibration_drawing_and_hits():
     names = [
+        "seatedTestingCalibrationEnabled",
         "distance", "midpoint", "mirrorX", "sideLandmarks", "landmarkIsUsable", "landmarkIsInFrame",
         "medianValue", "shoulderWidth", "isLapTarget", "isMouthTarget", "currentTaskLapStep", "upcomingLapStep",
         "newLapTargetCalibration", "lapWristZoneReason", "lapTargetCandidateStatus", "lapTargetCandidate",
@@ -33,6 +34,7 @@ let AFFECTED_SIDE='right', currentTaskIdx=0, calibratingAssessment=true;
 let lapTargetCalibration, forwardReachPlacement, lapCalibrationDiagnostic={}, dynamicTargetPos=null;
 let assessmentLapTarget=null, assessmentLapTargetRadius=null;
 function testingReachEnabled(){return false;}
+function testingMouthEnabled(){return false;}
 const video={videoWidth:640,videoHeight:480};
 const LAP_CALIBRATION_MIN_SAMPLES=8,LAP_CALIBRATION_MIN_MS=650;
 const postRN=()=>{};

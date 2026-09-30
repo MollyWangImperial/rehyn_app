@@ -1,10 +1,12 @@
-// Local review capture is independent of cloud/history recording. No microphone.
-const localReview={enabled:['127.0.0.1','localhost','[::1]'].includes(location.hostname),active:null,results:{},error:null};
+// Camera measurements stay live; local preview and Testing do not automatically
+// record or save review videos. Existing saved recordings are left untouched.
+const localReview={enabled:false,active:null,results:{},error:null};
 const localReviewStatus=document.createElement('div');
 localReviewStatus.id='localRecordingStatus';localReviewStatus.setAttribute('role','status');
 localReviewStatus.style.cssText='position:absolute;top:42px;left:16px;z-index:9;background:#102e27e8;color:#fff;padding:6px 10px;border-radius:8px;font:13px sans-serif;max-width:75%;pointer-events:none';
-localReviewStatus.hidden=true;document.getElementById('stage').append(localReviewStatus);
-if(testingMouthEnabled()){
+localReviewStatus.hidden=true;
+if(localReview.enabled)document.getElementById('stage').append(localReviewStatus);
+if(localReview.enabled && testingMouthEnabled()){
   localReviewStatus.style.cssText='position:static;margin:8px 0;color:#c4d8d0;font:13px sans-serif';
   document.getElementById('top').after(localReviewStatus);
 }

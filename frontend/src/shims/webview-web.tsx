@@ -58,8 +58,12 @@ export const WebView = forwardRef<any, Props>(function WebViewWeb(
         const win = iframeRef.current?.contentWindow as any;
         if (win && !win.ReactNativeWebView) {
           win.ReactNativeWebView = {
-            postMessage: (data: string) =>
-              onMessageRef.current?.({ nativeEvent: { data } }),
+            postMessage: (data: string) => {
+              // Dispatch on the parent event loop. Completion unmounts the
+              // iframe; Firefox must not associate the parent's score fetch
+              // with the child document that is about to be destroyed.
+              window.setTimeout(() => onMessageRef.current?.({ nativeEvent: { data } }), 0);
+            },
           };
         }
       } catch {

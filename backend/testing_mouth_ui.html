@@ -1,25 +1,49 @@
 <style>
-body.testing-mouth #stage{width:calc(100vw - 330px)}
-#mouthDiagnostics{position:absolute;left:100%;top:0;width:330px;height:100%;padding:18px;background:#102d29;color:#edf7f2;overflow:auto;z-index:12;font-size:14px;line-height:1.45}
+body.testing-mouth #stage{width:calc(100vw - 370px);margin-left:370px}
+#mouthDiagnostics{position:absolute;right:100%;top:0;width:370px;height:100%;padding:12px;background:rgba(5,25,23,.94);color:#edf7f2;overflow:auto;z-index:12;font-size:14px;line-height:1.45}
 #mouthDiagnostics h2{font-size:21px;margin-bottom:8px}#mouthDiagnostics h3{font-size:16px;margin:14px 0 6px}
-#mouthDiagnostics .mouthMetric{padding:10px 0;border-bottom:1px solid #47635c}#mouthDiagnostics b,#mouthDiagnostics small{display:block}#mouthDiagnostics strong{font-size:23px}#mouthDiagnostics small{color:#c4d8d0;font-size:12px}
+#mouthDiagnostics .mouthMetric{padding:10px 0;border-bottom:1px solid #47635c}#mouthDiagnostics b,#mouthDiagnostics small{display:block}#mouthDiagnostics strong{display:block;font-size:25px}#mouthDiagnostics small{color:#c4d8d0;font-size:12px}
 #mouthDiagnostics button{min-height:42px;margin:8px 4px 0 0;padding:8px;border:1px solid #9fc4b5;border-radius:8px;background:#245c4a;color:white;cursor:pointer}
 #mouthDiagnostics input{margin:8px 6px 8px 0}#mouthCaption{margin-top:10px;color:#e8f4ee}
+#mouthAngles,#mouthCompensations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#mouthAngles .mouthMetric{border:0}#mouthAngles .mouthMetric:first-child,#mouthAngles .mouthMetric:first-child small{color:#67e8f9}#mouthAngles .mouthMetric:last-child,#mouthAngles .mouthMetric:last-child small{color:#facc15}
+#mouthCompensations .mouthMetric{background:rgba(255,255,255,.08);border:0;border-radius:8px;padding:8px;color:#fda4af}#mouthCompensations small{color:#fda4af}
+#mouthTrunk{margin-top:12px}#mouthTrunk strong{display:block}#mouthTrunk .reachTrunkRatio b{font-size:16px}
+#mouthDiagnostics button:disabled{opacity:.5;cursor:default}
+#mouthCompensationAlert{position:sticky;top:0;z-index:4;margin:8px 0;padding:10px 12px;border:2px solid #ff8181;border-radius:8px;background:#7c2424;color:#fff;font-size:14px;line-height:1.4}
+#mouthCompensationAlert[hidden]{display:none}#mouthCompensationAlert b{font-size:16px}#mouthCompensationAlert span{display:block;margin-top:4px}
 body.testing-mouth #bottom,body.testing-mouth #assessmentQualityStatus,body.testing-mouth #lapStatus{display:none!important}
 body.testing-mouth #testingReachAngles{display:none!important}
-@media(max-width:760px){body.testing-mouth #stage{width:100vw;height:60vh;height:60dvh}#mouthDiagnostics{left:0;top:100%;width:100%;height:40vh;height:40dvh;padding:12px 16px}#mouthDiagnostics h2{font-size:18px}#mouthMetrics,#mouthCompensations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}body.testing-mouth #calibrationOverlay{padding:10px}body.testing-mouth #calibrationCard{max-height:95%;overflow:auto}}
+@media(max-width:760px){body.testing-mouth #stage{margin-left:0;width:100vw;height:60vh;height:60dvh}#mouthDiagnostics{right:auto;left:0;top:100%;width:100%;height:40vh;height:40dvh;padding:12px 16px}#mouthDiagnostics h2{font-size:18px}#mouthMetrics,#mouthCompensations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}body.testing-mouth #calibrationOverlay{padding:10px}body.testing-mouth #calibrationOverlay .calibrationPanel{max-height:100%;overflow:auto}}
 </style>
 <aside id="mouthDiagnostics" class="hidden" aria-label="Hand to Mouth live measurements">
   <h2>Hand to Mouth · Testing</h2>
+  <div id="mouthCompensationAlert" role="status" aria-live="polite" aria-atomic="true" hidden><b id="mouthCompensationTitle"></b><span id="mouthCompensationScore"></span></div>
   <div id="mouthStep">Finding your seated position</div>
-  <label><input type="checkbox" id="mouthVoiceOn" checked>Molly voice guidance</label>
-  <div id="mouthVoiceState" role="status"></div>
-  <div id="mouthCaption"></div>
-  <div id="mouthHold">Calibration in progress</div>
-  <h3>Scoring measurements</h3><div id="mouthMetrics"></div>
+  <div id="mouthHold" role="status">Calibration in progress</div>
   <div id="mouthAngles" class="mouthMetric"></div>
+  <div id="mouthTrunk" class="reachTrunkLean"><b>Size changes from calibration</b><span id="mouthTrunkState">Waiting for upright calibration</span>
+    <div class="reachTrunkCueGrid">
+      <div class="reachTrunkCue"><b>Trunk — shoulder growth</b><strong id="mouthShoulderCue">—</strong><span>Shoulder span on the fixed calibration axis; vertical shoulder rise is excluded.</span><span>Threshold: above 12% for 0.5 s</span><span id="mouthShoulderState">Waiting for upright calibration</span>
+        <div class="reachTrunkRatio"><span>Shoulder span / baseline</span><b id="mouthShoulderScale">—</b></div>
+      </div>
+      <div class="reachTrunkCue"><b>Head forward — face growth</b><strong id="mouthFaceCue">—</strong><span>Face growth beyond shoulder-span growth.</span><span>Threshold: above 10% for 0.5 s</span><span id="mouthFaceState">Waiting for upright calibration</span>
+        <div class="reachTrunkRatio"><span>Face span / baseline</span><b id="mouthFaceScale">—</b><span>Relative face growth ratio</span><b id="mouthRelativeFaceScale">—</b></div>
+        <span>Aspect-corrected ear-to-ear span; baseline = 1.0000×. Face growth cannot trigger trunk lean.</span>
+      </div>
+    </div>
+  </div>
   <h3>Compensation checks</h3><div id="mouthCompensations"></div>
-  <small>Arm elevation uses model 3D; its cyan arc is a separate 2D view. Yellow elbow bend arc uses the scoring angle. The head cue is a proxy, not an anatomical angle.</small>
+  <h3>Scoring measurements</h3><div id="mouthMetrics"></div>
+  <small>Complete all four targets without detected compensation to earn 100/100. Any confirmed compensation or an incomplete attempt gives 15/100 for the whole test. Missing posture evidence is shown as unavailable. A compensation must meet its threshold for 0.5 seconds during an active step. Trunk and head cues are camera estimates.</small>
+  <h3>Voice and controls</h3>
+  <small>For the first circle, settle your wrist inside it for one second.</small>
+  <small id="mouthHandState"></small>
+  <div id="mouthVoiceState" role="status"></div>
+  <button id="mouthReplay" type="button">Replay instruction</button>
+
+  <label><input type="checkbox" id="mouthVoiceOn" checked>Molly voice guidance</label>
+  <div id="mouthCaption"></div>
   <label><input id="mouthAssisted" type="checkbox">Someone is physically helping my arm</label>
   <button id="mouthSkip" type="button">Skip step</button>
 </aside>

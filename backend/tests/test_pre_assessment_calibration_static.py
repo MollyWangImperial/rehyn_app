@@ -56,7 +56,7 @@ def test_calibration_runs_before_task_one_and_is_not_recorded_as_task_motion():
     source = server.POSE_RUNNER_HTML
     start_handler = source[source.index("async function beginAssessmentSetup()") : source.index('markerConfirmBtn.addEventListener')]
     assert "calibratingAssessment = shouldRunSeatedCalibration();" in start_handler
-    assert start_handler.index("requestAnimationFrame(loop);") < start_handler.index("await playVoice(testingReachEnabled() ? TESTING_REACH_CALIBRATION_INSTRUCTION : CALIBRATION_INSTRUCTION);")
+    assert start_handler.index("requestAnimationFrame(loop);") < start_handler.index("await playVoice(testingMouthEnabled() ? MOUTH_TEST_VOICE.calibration : testingReachEnabled() ? TESTING_REACH_CALIBRATION_INSTRUCTION : CALIBRATION_INSTRUCTION);")
     assert "await startStep();" in start_handler
     assert "prefetchVoice(CALIBRATION_COMPLETE_INSTRUCTION);" in start_handler
     assert "if(!running || calibratingAssessment || motionFrames.length >= MAX_MOTION_FRAMES) return;" in source
@@ -99,7 +99,7 @@ def test_browser_hook_can_drive_the_real_calibration_gate():
     assert "statusText:calibrationAutoStatus.textContent" in source
 
 
-def test_testing_calibration_starts_after_bounded_posture_wait_when_hips_cannot_be_tracked():
+def test_testing_calibration_requires_posture_and_camera_quality_without_timeout_bypass():
     source = server.POSE_RUNNER_HTML
     start = source.index("function updatePreAssessmentCalibrationUI(lm){")
     end = source.index("\n}\n\nasync function completePreAssessmentCalibration()", start) + 2
@@ -115,24 +115,34 @@ const lapTargetCalibration={ready:true};let forwardReachPlacement={ready:true};
 const assessmentQuality={trunkLeanBaseline:null,trunkLeanBaselineFrames:[],
   trunkLeanMetrics:{metricsFromLandmarks:()=>({reason:'Keep both shoulders and both hips in view.'})}};
 const video={videoWidth:640,videoHeight:480};
-const calibrationCamera={},calibrationArm={},calibrationSeat={},calibrationLap={};
+const calibrationCamera={},calibrationArm={},calibrationSeat={},calibrationLap={},calibrationQuality={};
 const calibrationProgressFill={style:{}},calibrationTitle={textContent:''},calibrationLead={textContent:''};
 const calibrationAutoStatus={textContent:'',classList:{add(){},remove(){}}};
 function testingReachEnabled(){return true;}
+function testingMouthEnabled(){return false;}
+function seatedTestingCalibrationEnabled(){return true;}
+let qualityReady=false;
+function reachCameraStatus(){return {ready:qualityReady,message:'Improve front lighting and keep both hips visible.'};}
 function calibrationLandmarkStatus(){return {ready:forwardReachPlacement.ready,cameraReady:true,armVisible:true,
   seatedAnchorsVisible:true,lapReady:forwardReachPlacement.ready,
   lapGuidance:'Move slightly left to leave room for the reach circles.'};}
 function setCalibrationCheck(){}
+function syncReachCalibrationChecks(){}
 let starts=0;function completePreAssessmentCalibration(){starts++;}
 updatePreAssessmentCalibrationUI([]);
 assert.equal(preAssessmentCalibrationReady,false);
-assert.match(calibrationAutoStatus.textContent,/both hips/);
+assert.match(calibrationLead.textContent,/both hips/);
 fakeNow=5999;updatePreAssessmentCalibrationUI([]);
 assert.equal(starts,0);
 fakeNow=6001;updatePreAssessmentCalibrationUI([]);
-assert.equal(preAssessmentCalibrationReady,true);
+assert.equal(preAssessmentCalibrationReady,false);
+assert.equal(starts,0);
+fakeNow=60000;updatePreAssessmentCalibrationUI([]);
+assert.equal(starts,0);
+assessmentQuality.trunkLeanBaseline={};updatePreAssessmentCalibrationUI([]);
+assert.equal(starts,0);
+qualityReady=true;updatePreAssessmentCalibrationUI([]);
 assert.equal(starts,1);
-assert.match(calibrationLead.textContent,/trunk-lean reference was unavailable/);
 forwardReachPlacement={ready:false};preAssessmentCalibrationReady=false;starts=0;
 fakeNow=12000;updatePreAssessmentCalibrationUI([]);
 assert.equal(starts,0);

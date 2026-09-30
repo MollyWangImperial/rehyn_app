@@ -1,0 +1,68 @@
+<style>
+  body.assessment-finishing #stage > :not(#assessmentCompletion){visibility:hidden!important;pointer-events:none!important}
+  #assessmentCompletion[hidden],#assessmentCompletion [hidden]{display:none!important}
+  #assessmentCompletion{position:fixed;inset:0;z-index:500;overflow:auto;display:grid;place-items:center;padding:32px 24px;background:radial-gradient(ellipse at 50% 40%,#1b382e 0,#10201b 38%,#0c1512 76%);color:#f6faf6;text-align:center}
+  .analysisContent{width:min(100%,620px);margin:auto;animation:analysisEnter .6s ease both}
+  .analysisVisual{width:clamp(200px,30vw,280px);aspect-ratio:1;position:relative;margin:0 auto 32px;isolation:isolate}
+  .analysisVisual:before{content:"";position:absolute;inset:12%;border-radius:50%;background:#86dfaa;filter:blur(44px);opacity:.12;animation:analysisBreathe 3.6s ease-in-out infinite}
+  .analysisVisual svg{width:100%;height:100%;overflow:visible}
+  .analysisOrbit{transform-origin:140px 140px;animation:analysisOrbit 9s linear infinite}
+  .analysisOrbitReverse{transform-origin:140px 140px;animation:analysisOrbit 14s linear infinite reverse}
+  .analysisFigure{transform-origin:140px 150px;animation:analysisFigure 3.6s ease-in-out infinite}
+  .analysisNode{animation:analysisNode 2.4s ease-in-out infinite alternate}
+  .analysisNode:nth-child(2n){animation-delay:.8s}
+  .analysisSweep{animation:analysisSweep 3.6s ease-in-out infinite}
+  #analysisTitle{font-size:clamp(28px,4vw,42px);font-weight:650;letter-spacing:-.035em;line-height:1.15;outline:none;text-wrap:balance}
+  #analysisMessage{font-size:17px;line-height:1.6;color:#c0d3c8;margin:18px auto 0;max-width:460px;text-wrap:balance}
+  .analysisDots{display:flex;justify-content:center;gap:9px;margin:28px auto 0}
+  .analysisDots i{width:6px;height:6px;border-radius:50%;background:#a4e8ba;animation:analysisDot 1.8s ease-in-out infinite}
+  .analysisDots i:nth-child(2){animation-delay:.2s}.analysisDots i:nth-child(3){animation-delay:.4s}
+  #analysisResults{list-style:none;text-align:left;display:grid;gap:10px;margin:28px 0}
+  .analysisResult{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 20px;border:1px solid #aac7b52b;border-radius:16px;background:#d2e8da09;line-height:1.4}
+  .analysisResult strong{font-size:19px;white-space:nowrap;color:#b4edc5}.analysisResult small{font-size:13px;color:#c0d3c8;display:block;margin-top:3px}
+  #analysisActions{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin-top:28px}
+  #analysisActions button{border:0;border-radius:18px;padding:15px 28px;min-height:52px;font:inherit;font-weight:650;cursor:pointer;background:#b0e6c1;color:#183526}
+  #analysisActions button:focus-visible{outline:3px solid #fff;outline-offset:4px}
+  #analysisActions #analysisExit{background:#e0efe514;color:#e7f2ea}
+  #analysisPreviewNote{font-size:13px;line-height:1.5;color:#a4bbae;margin-top:22px}
+  #assessmentCompletion:not([data-state="analyzing"]) .analysisVisual,#assessmentCompletion:not([data-state="analyzing"]) .analysisDots{display:none}
+  .analysisReadyMark{display:none;width:72px;height:72px;margin:0 auto 24px;border-radius:50%;background:#a3e8b720;place-items:center;color:#b4edc5;font-size:34px}
+  #assessmentCompletion[data-state="ready"] .analysisReadyMark{display:grid;animation:analysisEnter .45s ease both}
+  @keyframes analysisEnter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes analysisOrbit{to{transform:rotate(360deg)}}
+  @keyframes analysisBreathe{50%{transform:scale(1.2);opacity:.24}}
+  @keyframes analysisFigure{50%{transform:translateY(-3px) scale(1.025)}}
+  @keyframes analysisNode{to{opacity:.45}}
+  @keyframes analysisSweep{0%,100%{transform:translateY(-56px);opacity:0}20%,80%{opacity:.7}90%{transform:translateY(70px);opacity:0}}
+  @keyframes analysisDot{0%,65%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+  @media(prefers-reduced-motion:reduce){#assessmentCompletion *,#assessmentCompletion *:before{animation:none!important}.analysisSweep{display:none}}
+  @media(max-height:540px){.analysisVisual{width:180px;margin-bottom:18px}#assessmentCompletion{padding:24px}.analysisDots{margin-top:18px}}
+</style>
+<section id="assessmentCompletion" hidden data-state="analyzing" aria-labelledby="analysisTitle">
+  <div class="analysisContent">
+    <div class="analysisVisual" aria-hidden="true">
+      <svg viewBox="0 0 280 280" fill="none">
+        <defs><linearGradient id="analysisArc"><stop stop-color="#72b991" stop-opacity="0"/><stop offset="1" stop-color="#b8f0c8"/></linearGradient><linearGradient id="analysisScan"><stop stop-color="#91dcac" stop-opacity="0"/><stop offset=".5" stop-color="#d3f5dc"/><stop offset="1" stop-color="#91dcac" stop-opacity="0"/></linearGradient></defs>
+        <circle cx="140" cy="140" r="123" stroke="#b6e4c5" stroke-opacity=".09"/>
+        <circle cx="140" cy="140" r="105" stroke="#b6e4c5" stroke-opacity=".13"/>
+        <g class="analysisOrbit"><circle cx="140" cy="140" r="123" stroke="url(#analysisArc)" stroke-width="2" stroke-dasharray="170 603" stroke-linecap="round"/><circle cx="263" cy="140" r="4" fill="#d1f5db"/></g>
+        <g class="analysisOrbitReverse"><circle cx="140" cy="140" r="105" stroke="#7abb96" stroke-width="2" stroke-dasharray="64 596" stroke-linecap="round" opacity=".6"/></g>
+        <g class="analysisFigure" stroke="#8bd6a6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="140" cy="82" r="15" fill="#94d8ab" fill-opacity=".07"/>
+          <path d="M140 101v61m-29-49 29-7 29 7m-58 0-20 28-16-16m94-12 16 29 19-16m-93-13 9 49h40l9-49m-49 49-10 29-12 23m62-52 12 26 8 26" opacity=".7"/>
+          <g fill="#d1f5db" stroke="none"><circle class="analysisNode" cx="111" cy="113" r="4"/><circle class="analysisNode" cx="169" cy="113" r="4"/><circle class="analysisNode" cx="91" cy="141" r="4"/><circle class="analysisNode" cx="185" cy="142" r="4"/><circle class="analysisNode" cx="75" cy="125" r="4"/><circle class="analysisNode" cx="204" cy="126" r="4"/><circle class="analysisNode" cx="120" cy="162" r="4"/><circle class="analysisNode" cx="160" cy="162" r="4"/><circle class="analysisNode" cx="110" cy="191" r="4"/><circle class="analysisNode" cx="172" cy="188" r="4"/><circle class="analysisNode" cx="98" cy="214" r="4"/><circle class="analysisNode" cx="180" cy="214" r="4"/></g>
+        </g>
+        <path class="analysisSweep" d="M63 140h154" stroke="url(#analysisScan)" stroke-width="2"/>
+      </svg>
+    </div>
+    <div class="analysisReadyMark" aria-hidden="true">✓</div>
+    <div role="status" aria-live="polite" aria-atomic="true">
+      <h1 id="analysisTitle" tabindex="-1">Analyzing your movement</h1>
+      <p id="analysisMessage">Your movement check is complete. We’re bringing your results together.</p>
+    </div>
+    <div class="analysisDots" aria-hidden="true"><i></i><i></i><i></i></div>
+    <ul id="analysisResults" hidden aria-label="Movement results"></ul>
+    <div id="analysisActions" hidden><button id="analysisRetry" type="button" hidden>Try again</button><button id="analysisExit" type="button">Done</button></div>
+    <p id="analysisPreviewNote" hidden>Local preview · these results are not saved to your account.</p>
+  </div>
+</section>

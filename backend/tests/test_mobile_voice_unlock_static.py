@@ -12,7 +12,9 @@ def test_assessment_unlocks_audio_from_start_tap_and_prefetches_first_voice():
     unlock = source.index("const unlockPromise = unlockAudioPlayback();", start)
     camera = source.index("const camOk = await setupCamera();", start)
     assert unlock < camera
-    assert "const firstVoicePromise = firstStep && firstStep.voice" in source
+    assert "const firstVoicePromise = !testingReachEnabled() && !testingMouthEnabled() && firstStep && firstStep.voice" in source
+    # Testing T3 prefetches its private Molly bundle rather than general TTS.
+    assert "MOUTH_TEST_VOICE.lines.forEach(prefetchMouthVoice);" in source
     assert "await Promise.allSettled([unlockPromise, firstVoicePromise]);" in source
     assert source.index("requestAnimationFrame(loop);", camera) < source.index("await startStep();", camera)
     assert "playback.catch(error => finish(() => reject(error)))" in source

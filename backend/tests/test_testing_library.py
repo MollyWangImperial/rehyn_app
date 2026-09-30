@@ -130,10 +130,10 @@ def test_frontend_library_and_runners_keep_test_results_out_of_progress():
     assert 'if (!isLibraryTest) {' in exercise
     assert 'const LIBRARY_TEST_MODE = URL_PARAMS.get("library_test") === "1";' in runner
     assert 'stepTitle.textContent = "Single task test";' in runner
-    assert 'if(LIBRARY_TEST_MODE) return Promise.resolve(null);' in runner
-    assert 'if(LIBRARY_TEST_MODE) return;' in runner
+    assert 'if(LIBRARY_TEST_MODE || LOCAL_PREVIEW_MODE) return Promise.resolve(null);' in runner
+    assert 'if(LIBRARY_TEST_MODE || LOCAL_PREVIEW_MODE) return;' in runner
     assert 'if(LIBRARY_TEST_MODE) taskQuery.set("library_test", "1");' in runner
-    assert 'if(!LIBRARY_TEST_MODE){' in runner
+    assert 'if(!LIBRARY_TEST_MODE && !LOCAL_PREVIEW_MODE){' in runner
     assert 'postRN({type:"library_test_complete"' in runner
     assert 'if((LIBRARY_TEST_MODE || WALKING_TEST_MODE) && !window.__rehynStartRequested)' in runner
     assert "await setupPose();" in runner
@@ -142,8 +142,8 @@ def test_frontend_library_and_runners_keep_test_results_out_of_progress():
     assert runner.index("function newForwardLeanEvidence") < runner.index("class Tracker") < runner.index("const assessmentQuality =")
     shared_trunk_detector = (FRONTEND_ROOT.parent / "testing" / "trunk-lean-comparison" / "trunk_lean_metrics.js").read_text(encoding="utf-8").strip()
     assert shared_trunk_detector in runner
-    assert "this.trunkLeanMetrics.newForwardLeanEvidence(frame,this.trunkLeanBaseline)" in runner
-    assert "testingReachTrunkLean:LIBRARY_TEST_MODE && ASSIGNED_TASK_IDS.length===1 && ASSIGNED_TASK_IDS[0]===\"T1\"" in runner
+    assert "this.trunkLeanMetrics.newForwardLeanEvidence(frame,this.trunkLeanBaseline," in runner
+    assert 'testingReachTrunkLean:LIBRARY_TEST_MODE && ASSIGNED_TASK_IDS.length===1 && ["T1","T3"].includes(ASSIGNED_TASK_IDS[0])' in runner
     assert 'id="liveTrunkLeanState"' in runner
 
 
@@ -198,12 +198,13 @@ def test_testing_report_explains_score_without_persisting_or_charging(monkeypatc
     assert response.status_code == 200
     report = response.json()
     assert report["recorded"] is False and report["clinical_measure"] is False
-    assert report["task"]["score"] == 93.5
+    assert report["task"]["score"] == 15
+    assert report["task"]["compensation_override"]["detected"][0]["id"] == "trunk_lean"
     assert report["completed_steps"] == 4 and report["duration_ms"] == 8000
     step = report["task"]["steps"][1]
-    assert step["score"] == 74.2
+    assert step["score"] == 92.7
     assert step["calculation"] == {"completion_points": 20, "range_points": 72.727,
-                                   "detected_compensations": 1, "form_factor": .8}
+                                   "detected_compensations": 1, "form_factor": 1}
     shoulder = next(row for row in step["measurements"] if row["metric"] == "arm_elevation")
     assert shoulder["endpoint"] == 60 and shoulder["max"] == 70
     assert next(row for row in step["measurements"] if row["metric"] == "wrist_bend")["median"] is None
