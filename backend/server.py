@@ -570,9 +570,8 @@ async def _sync_pending_assessments_to_mongodb() -> int:
         logger.info("Synchronized %s temporarily stored assessment(s) to MongoDB", synced)
     return synced
 
-# General speech keeps the existing OpenAI voice. Assessment and exercise
-# instructions can use an ElevenLabs voice clone without changing Alira's chat
-# voice. When the clone is not configured, instructions fall back to OpenAI.
+# The production entry point enables the companion's designed Alira voice.
+# Other entry points can still select OpenAI or instruction-only human clones.
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "").strip()
 TTS_VOICE = os.environ.get("TTS_VOICE", "nova")  # warm/encouraging default
@@ -581,7 +580,9 @@ INSTRUCTION_TTS_PROVIDER = os.environ.get("INSTRUCTION_TTS_PROVIDER", "openai").
 CHATTERBOX_REFERENCE_AUDIO = os.environ.get("CHATTERBOX_REFERENCE_AUDIO", "").strip()
 CHATTERBOX_FFMPEG_PATH = os.environ.get("CHATTERBOX_FFMPEG_PATH", "").strip()
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "").strip()
-ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "").strip()
+ALIRA_ELEVENLABS_VOICE_ID = "WeMiVLMEQeVXN5PFqfo3"
+ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "").strip() or ALIRA_ELEVENLABS_VOICE_ID
+ELEVENLABS_VOICE_SCOPE = os.environ.get("ELEVENLABS_VOICE_SCOPE", "instruction").strip().lower()
 ELEVENLABS_TTS_MODEL = os.environ.get("ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2").strip()
 ELEVENLABS_OUTPUT_FORMAT = os.environ.get("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128").strip()
 STT_MODEL = os.environ.get("STT_MODEL", "gpt-transcribe").strip() or "gpt-transcribe"
@@ -3316,10 +3317,58 @@ EXERCISE_INDEPENDENT_COMPLETE_VOICE = (
 OPENAI_TTS_VOICES = {"alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"}
 
 
+# Alira's delivery. These values mirror shared/alira-voice.ts in the recovery
+# companion, so she sounds like the same person on the site, in the assessment
+# and in every exercise. Change them in both places together.
+ALIRA_VOICE_SETTINGS = {
+    "stability": 0.45,
+    "similarity_boost": 0.8,
+    "style": 0.3,
+    "use_speaker_boost": True,
+    "speed": 0.95,
+}
+INSTRUCTION_CLONE_VOICE_SETTINGS = {
+    "stability": 0.65,
+    "similarity_boost": 0.85,
+    "style": 0.0,
+    "use_speaker_boost": True,
+    "speed": 0.92,
+}
+# After ElevenLabs refuses a live line (no key, no credits), lines outside the
+# recorded pack use the general voice for this long before trying again.
+ALIRA_LIVE_VOICE_RETRY_SECONDS = 600
+_alira_live_voice_retry_at = 0.0
+
+
 def _instruction_clone_ready() -> bool:
     if INSTRUCTION_TTS_PROVIDER == "chatterbox-nano":
         return bool(CHATTERBOX_REFERENCE_AUDIO) and Path(CHATTERBOX_REFERENCE_AUDIO).is_file()
     return INSTRUCTION_TTS_PROVIDER == "elevenlabs" and bool(ELEVENLABS_API_KEY) and bool(ELEVENLABS_VOICE_ID)
+
+
+def _alira_voice_everywhere() -> bool:
+    """True when one designed ElevenLabs voice speaks every line as Alira.
+
+    The API key is not required here: lines recorded ahead of time in
+    PREPARED_TTS_DIR play without it, and only live lines need credits.
+    """
+    return (
+        ELEVENLABS_VOICE_SCOPE == "all"
+        and INSTRUCTION_TTS_PROVIDER == "elevenlabs"
+        and bool(ELEVENLABS_VOICE_ID)
+    )
+
+
+def _openai_tts_request_config(requested_voice: Optional[str] = None) -> Dict[str, str]:
+    voice = requested_voice if requested_voice in OPENAI_TTS_VOICES else TTS_VOICE
+    provider = "openai-direct" if openai_tts_client else "openai-emergent" if tts_client else "unavailable"
+    return {
+        "provider": provider,
+        "model": TTS_MODEL,
+        "voice": voice,
+        "public_voice": voice,
+        "output_format": "mp3",
+    }
 
 
 def _tts_request_config(purpose: str, requested_voice: Optional[str] = None) -> Dict[str, str]:
@@ -3334,23 +3383,15 @@ def _tts_request_config(purpose: str, requested_voice: Optional[str] = None) -> 
             "public_voice": "Molly",
             "output_format": "mp3-loudnorm-v1",
         }
-    if purpose == "instruction" and _instruction_clone_ready():
+    if _alira_voice_everywhere() or (purpose == "instruction" and _instruction_clone_ready()):
         return {
             "provider": "elevenlabs",
             "model": ELEVENLABS_TTS_MODEL,
             "voice": ELEVENLABS_VOICE_ID,
-            "public_voice": "custom-cloned-voice",
+            "public_voice": "alira" if _alira_voice_everywhere() else "custom-cloned-voice",
             "output_format": ELEVENLABS_OUTPUT_FORMAT,
         }
-    voice = requested_voice if requested_voice in OPENAI_TTS_VOICES else TTS_VOICE
-    provider = "openai-direct" if openai_tts_client else "openai-emergent" if tts_client else "unavailable"
-    return {
-        "provider": provider,
-        "model": TTS_MODEL,
-        "voice": voice,
-        "public_voice": voice,
-        "output_format": "mp3",
-    }
+    return _openai_tts_request_config(requested_voice)
 
 
 def _tts_cache_key(text: str, voice: str, purpose: str = "general") -> str:
@@ -3360,13 +3401,15 @@ def _tts_cache_key(text: str, voice: str, purpose: str = "general") -> str:
         # working whenever the cloned instruction voice is not enabled.
         material = f"{config['model']}|{config['voice']}|{text}"
     else:
-        material = "|".join((
+        parts = [
             config["provider"],
             config["model"],
             config["voice"],
             config["output_format"],
-            text,
-        ))
+        ]
+        if config["provider"] == "elevenlabs" and _alira_voice_everywhere():
+            parts.append(json.dumps(ALIRA_VOICE_SETTINGS, sort_keys=True))
+        material = "|".join((*parts, text))
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
@@ -3393,6 +3436,21 @@ def _tts_cache_get(key: str) -> Optional[str]:
     return None
 
 
+def _alira_recorded_audio_base64(key: str) -> Optional[str]:
+    """A line recorded ahead of time in Alira's voice. It ships with the app, so
+    it needs no provider call, no API key and no credits."""
+    prepared = PREPARED_TTS_DIR / f"{key}.mp3"
+    try:
+        if prepared.is_file():
+            audio_b64 = base64.b64encode(prepared.read_bytes()).decode("ascii")
+            if audio_b64:
+                _tts_cache_put(key, audio_b64, persist=False)
+                return audio_b64
+    except OSError:
+        pass
+    return None
+
+
 def _tts_cache_put(key: str, audio_b64: str, persist: bool = True) -> None:
     _tts_memory_cache[key] = audio_b64
     _tts_memory_cache.move_to_end(key)
@@ -3414,6 +3472,8 @@ def _synthesize_tts_audio_bytes(text: str, voice: str, purpose: str = "general")
 
         return synthesize_mp3(text, Path(CHATTERBOX_REFERENCE_AUDIO), CHATTERBOX_FFMPEG_PATH)
     if config["provider"] == "elevenlabs":
+        if not ELEVENLABS_API_KEY:
+            raise RuntimeError("ElevenLabs API key is not configured for live speech")
         response = httpx.post(
             f"https://api.elevenlabs.io/v1/text-to-speech/{config['voice']}",
             params={"output_format": config["output_format"]},
@@ -3421,18 +3481,19 @@ def _synthesize_tts_audio_bytes(text: str, voice: str, purpose: str = "general")
             json={
                 "text": text,
                 "model_id": config["model"],
-                "voice_settings": {
-                    "stability": 0.65,
-                    "similarity_boost": 0.85,
-                    "style": 0.0,
-                    "use_speaker_boost": True,
-                    "speed": 0.92,
-                },
+                "voice_settings": dict(
+                    ALIRA_VOICE_SETTINGS if _alira_voice_everywhere() else INSTRUCTION_CLONE_VOICE_SETTINGS
+                ),
             },
             timeout=90,
         )
         response.raise_for_status()
         return response.content
+    return _synthesize_openai_tts_audio_bytes(text, config)
+
+
+def _synthesize_openai_tts_audio_bytes(text: str, config: Dict[str, str]) -> bytes:
+    """Blocking OpenAI call - always run through asyncio.to_thread."""
     if config["provider"] != "openai-direct" or not openai_tts_client:
         raise RuntimeError("Direct text-to-speech provider is not configured")
     response = openai_tts_client.audio.speech.create(
@@ -3454,6 +3515,8 @@ async def _generate_tts_audio_base64(text: str, voice: str, purpose: str = "gene
         raise HTTPException(status_code=503, detail="Voice service unavailable: no text-to-speech provider is configured.")
     key = _tts_cache_key(text, voice, purpose)
     cached = _tts_cache_get(key)
+    if cached is None and config["provider"] == "elevenlabs" and _alira_voice_everywhere():
+        cached = _alira_recorded_audio_base64(key)
     if cached is not None:
         return cached
     # Several runner prefetches for the same line arrive together: generate once.
@@ -3464,7 +3527,10 @@ async def _generate_tts_audio_base64(text: str, voice: str, purpose: str = "gene
     future: "asyncio.Future[str]" = loop.create_future()
     _tts_inflight[key] = future
     try:
-        if config["provider"] in {"openai-direct", "elevenlabs", "chatterbox-nano"}:
+        keep = True
+        if config["provider"] == "elevenlabs" and _alira_voice_everywhere():
+            audio_b64, keep = await _alira_live_tts_audio_base64(text, voice, purpose)
+        elif config["provider"] in {"openai-direct", "elevenlabs", "chatterbox-nano"}:
             audio_bytes = await asyncio.to_thread(_synthesize_tts_audio_bytes, text, voice, purpose)
             audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
         else:
@@ -3474,7 +3540,8 @@ async def _generate_tts_audio_base64(text: str, voice: str, purpose: str = "gene
                 voice=config["voice"],
                 response_format="mp3",
             )
-        _tts_cache_put(key, audio_b64)
+        if keep:
+            _tts_cache_put(key, audio_b64)
         if not future.done():
             future.set_result(audio_b64)
         return audio_b64
@@ -3484,6 +3551,43 @@ async def _generate_tts_audio_base64(text: str, voice: str, purpose: str = "gene
         raise
     finally:
         _tts_inflight.pop(key, None)
+
+
+async def _alira_live_tts_audio_base64(text: str, voice: str, purpose: str) -> Tuple[str, bool]:
+    """Speak a line that is not in the recorded pack.
+
+    Returns the audio and whether it is Alira's own voice (and so worth caching).
+    Without a key or credits the general voice speaks the line, so a patient is
+    never left in silence mid-exercise; that audio is not cached, and Alira's
+    voice is tried again after ALIRA_LIVE_VOICE_RETRY_SECONDS.
+    """
+    global _alira_live_voice_retry_at
+    failure: Optional[BaseException] = None
+    if time.monotonic() >= _alira_live_voice_retry_at:
+        try:
+            audio_bytes = await asyncio.to_thread(_synthesize_tts_audio_bytes, text, voice, purpose)
+            return base64.b64encode(audio_bytes).decode("ascii"), True
+        except Exception as error:  # noqa: BLE001 - any provider failure takes the same fallback
+            failure = error
+            status = getattr(getattr(error, "response", None), "status_code", None)
+            if not ELEVENLABS_API_KEY or status in {401, 402, 403, 429}:
+                _alira_live_voice_retry_at = time.monotonic() + ALIRA_LIVE_VOICE_RETRY_SECONDS
+            logger.warning("Alira's ElevenLabs voice could not speak a live line: %s", str(error)[:200])
+    fallback = _openai_tts_request_config(voice)
+    if fallback["provider"] == "openai-direct":
+        audio_bytes = await asyncio.to_thread(_synthesize_openai_tts_audio_bytes, text, fallback)
+        return base64.b64encode(audio_bytes).decode("ascii"), False
+    if fallback["provider"] == "openai-emergent":
+        audio_b64 = await tts_client.generate_speech_base64(
+            text=text,
+            model=fallback["model"],
+            voice=fallback["voice"],
+            response_format="mp3",
+        )
+        return audio_b64, False
+    if failure is not None:
+        raise failure
+    raise RuntimeError("Alira's voice is resting after a provider refusal and no fallback voice is configured")
 
 
 @lru_cache(maxsize=1)
@@ -3544,7 +3648,7 @@ async def generate_tts(req: TTSRequest):
     # Instruction requests use the server-configured clone. The client cannot
     # select arbitrary ElevenLabs voice IDs or access the provider credential.
     voice = req.voice_id if (req.voice_id in OPENAI_TTS_VOICES) else TTS_VOICE
-    if req.purpose == "instruction" and _instruction_clone_ready() and not _instruction_text_allowed(req.text):
+    if req.purpose == "instruction" and _instruction_clone_ready() and not _alira_voice_everywhere() and not _instruction_text_allowed(req.text):
         raise HTTPException(status_code=403, detail="The cloned instruction voice is limited to app-authored rehabilitation guidance.")
     try:
         audio_b64 = await _generate_tts_audio_base64(req.text, voice, req.purpose)
@@ -3562,20 +3666,34 @@ async def generate_tts(req: TTSRequest):
 
 @api_router.get("/tts/health")
 async def tts_health(purpose: str = "instruction"):
-    """Diagnostic for the instruction clone, with OpenAI fallback visibility."""
+    """Probe real assessment audio and report the voice that produced it."""
     purpose = "instruction" if purpose == "instruction" else "general"
     config = _tts_request_config(purpose, TTS_VOICE)
+    alira = _alira_voice_everywhere()
+    # Probe a shipped assessment instruction rather than an unrecorded "ok".
+    # This checks the patient-facing speech path without spending new credits.
+    probe_text = "Hold your hand steadily at the forward target for a moment." if alira else "ok"
+    key = _tts_cache_key(probe_text, TTS_VOICE, purpose)
+    prepared = (PREPARED_TTS_DIR / f"{key}.mp3").is_file()
     try:
-        audio_b64 = await _generate_tts_audio_base64("ok", TTS_VOICE, purpose)
+        audio_b64 = await _generate_tts_audio_base64(probe_text, TTS_VOICE, purpose)
+        # Fallback audio deliberately is not cached under Alira's identity.
+        fallback_used = alira and _tts_cache_get(key) is None
+        actual = _openai_tts_request_config(TTS_VOICE) if fallback_used else config
         return {
             "ok": True,
             "bytes": len(base64.b64decode(audio_b64)),
-            "voice": config["public_voice"],
-            "model": config["model"],
-            "provider": config["provider"],
+            "voice": actual["public_voice"],
+            "model": actual["model"],
+            "provider": actual["provider"],
             "purpose": purpose,
             "instruction_clone_ready": _instruction_clone_ready(),
             "configured_instruction_provider": INSTRUCTION_TTS_PROVIDER,
+            "configured_voice_id": config["voice"],
+            "alira_voice_everywhere": alira,
+            "alira_live_voice_available": alira and bool(ELEVENLABS_API_KEY) and time.monotonic() >= _alira_live_voice_retry_at,
+            "audio_source": "fallback" if fallback_used else "prepared" if prepared else "generated_or_cached",
+            "fallback_used": fallback_used,
         }
     except Exception as e:
         msg = str(e)
@@ -3586,6 +3704,7 @@ async def tts_health(purpose: str = "instruction"):
             "purpose": purpose,
             "instruction_clone_ready": _instruction_clone_ready(),
             "configured_instruction_provider": INSTRUCTION_TTS_PROVIDER,
+            "alira_voice_everywhere": alira,
             "quota_exceeded": quota,
             "hint": (
                 "Top up your Emergent Universal Key balance at Profile → Universal Key → Add Balance."

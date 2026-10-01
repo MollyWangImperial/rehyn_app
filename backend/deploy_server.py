@@ -1,9 +1,16 @@
 """Production entry point that serves the Expo web build and FastAPI together."""
 
 from pathlib import Path
+import os
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
+
+# The hosted assessment uses the same designed Alira voice as the companion.
+# Explicit environment settings still take precedence. Packed lines work
+# without a provider credential; unrecorded speech requires the key.
+os.environ.setdefault("INSTRUCTION_TTS_PROVIDER", "elevenlabs")
+os.environ.setdefault("ELEVENLABS_VOICE_SCOPE", "all")
 
 from backend.server import app
 from backend.local_assessment_recordings import router as local_recordings_router

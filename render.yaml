@@ -27,7 +27,9 @@ services:
       - key: ELEVENLABS_API_KEY
         sync: false
       - key: ELEVENLABS_VOICE_ID
-        sync: false
+        value: WeMiVLMEQeVXN5PFqfo3
+      - key: ELEVENLABS_VOICE_SCOPE
+        value: all
       - key: ELEVENLABS_TTS_MODEL
         value: eleven_multilingual_v2
       - key: ELEVENLABS_OUTPUT_FORMAT
