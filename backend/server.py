@@ -794,6 +794,8 @@ class TTSRequest(BaseModel):
 class TTSResponse(BaseModel):
     audio_b64: str
     text: str
+    provider: Optional[str] = None
+    voice: Optional[str] = None
 
 
 class FastCheckSubmit(BaseModel):
@@ -3334,10 +3336,11 @@ INSTRUCTION_CLONE_VOICE_SETTINGS = {
     "use_speaker_boost": True,
     "speed": 0.92,
 }
-# After ElevenLabs refuses a live line (no key, no credits), lines outside the
-# recorded pack use the general voice for this long before trying again.
+# Permanent credential/quota failures pause live requests. Temporary rate limits
+# are retried inside a queue; neither failure may change Alira's voice.
 ALIRA_LIVE_VOICE_RETRY_SECONDS = 600
 _alira_live_voice_retry_at = 0.0
+_alira_live_voice_queues = weakref.WeakKeyDictionary()
 
 
 def _instruction_clone_ready() -> bool:
@@ -3548,46 +3551,38 @@ async def _generate_tts_audio_base64(text: str, voice: str, purpose: str = "gene
     except BaseException as error:
         if not future.done():
             future.set_exception(error)
+            future.exception()  # Consume the exception when no coalesced caller waits.
         raise
     finally:
         _tts_inflight.pop(key, None)
 
 
 async def _alira_live_tts_audio_base64(text: str, voice: str, purpose: str) -> Tuple[str, bool]:
-    """Speak a line that is not in the recorded pack.
+    """Queue unrecorded Alira lines and retry temporary provider refusals.
 
-    Returns the audio and whether it is Alira's own voice (and so worth caching).
-    Without a key or credits the general voice speaks the line, so a patient is
-    never left in silence mid-exercise; that audio is not cached, and Alira's
-    voice is tried again after ALIRA_LIVE_VOICE_RETRY_SECONDS.
+    One request at a time leaves capacity for the companion using the same key.
+    An unavailable Alira voice is reported for caption/retry UI, never replaced
+    by another speaker or cached under her identity.
     """
     global _alira_live_voice_retry_at
-    failure: Optional[BaseException] = None
-    if time.monotonic() >= _alira_live_voice_retry_at:
-        try:
-            audio_bytes = await asyncio.to_thread(_synthesize_tts_audio_bytes, text, voice, purpose)
-            return base64.b64encode(audio_bytes).decode("ascii"), True
-        except Exception as error:  # noqa: BLE001 - any provider failure takes the same fallback
-            failure = error
-            status = getattr(getattr(error, "response", None), "status_code", None)
-            if not ELEVENLABS_API_KEY or status in {401, 402, 403, 429}:
-                _alira_live_voice_retry_at = time.monotonic() + ALIRA_LIVE_VOICE_RETRY_SECONDS
-            logger.warning("Alira's ElevenLabs voice could not speak a live line: %s", str(error)[:200])
-    fallback = _openai_tts_request_config(voice)
-    if fallback["provider"] == "openai-direct":
-        audio_bytes = await asyncio.to_thread(_synthesize_openai_tts_audio_bytes, text, fallback)
-        return base64.b64encode(audio_bytes).decode("ascii"), False
-    if fallback["provider"] == "openai-emergent":
-        audio_b64 = await tts_client.generate_speech_base64(
-            text=text,
-            model=fallback["model"],
-            voice=fallback["voice"],
-            response_format="mp3",
-        )
-        return audio_b64, False
-    if failure is not None:
-        raise failure
-    raise RuntimeError("Alira's voice is resting after a provider refusal and no fallback voice is configured")
+    loop = asyncio.get_running_loop()
+    queue = _alira_live_voice_queues.setdefault(loop, asyncio.Semaphore(1))
+    async with queue:
+        if time.monotonic() < _alira_live_voice_retry_at:
+            raise HTTPException(503, "Alira voice is temporarily unavailable. Please retry or follow the captions.")
+        for attempt in range(3):
+            try:
+                audio_bytes = await asyncio.to_thread(_synthesize_tts_audio_bytes, text, voice, purpose)
+                return base64.b64encode(audio_bytes).decode("ascii"), True
+            except Exception as error:
+                status = getattr(getattr(error, "response", None), "status_code", None)
+                if status in {429, 500, 502, 503, 504} and attempt < 2:
+                    await asyncio.sleep(2 ** (attempt + 1))
+                    continue
+                if not ELEVENLABS_API_KEY or status in {401, 402, 403}:
+                    _alira_live_voice_retry_at = time.monotonic() + ALIRA_LIVE_VOICE_RETRY_SECONDS
+                logger.warning("Alira live voice unavailable (provider status %s)", status)
+                raise HTTPException(503, "Alira voice is temporarily unavailable. Please retry or follow the captions.") from None
 
 
 @lru_cache(maxsize=1)
@@ -3652,7 +3647,10 @@ async def generate_tts(req: TTSRequest):
         raise HTTPException(status_code=403, detail="The cloned instruction voice is limited to app-authored rehabilitation guidance.")
     try:
         audio_b64 = await _generate_tts_audio_base64(req.text, voice, req.purpose)
-        return TTSResponse(audio_b64=audio_b64, text=req.text)
+        config = _tts_request_config(req.purpose, voice)
+        return TTSResponse(audio_b64=audio_b64, text=req.text, provider=config["provider"], voice=config["public_voice"])
+    except HTTPException:
+        raise
     except Exception as e:
         msg = str(e)
         logger.error(f"TTS error: {msg}")

@@ -9,7 +9,7 @@ The existing authenticated assessment routes and loopback preview guards remain.
 `companion_review_runner.html` is the assembled camera runner exported from the
 local companion's `assessment-service/backend/server.py` on 2 October 2026. Its
 SHA-256 before the guest transport substitutions is
-`75ef31a9714da2a37174223690a0d1c381ed4e753a4c2b720542626bde9662b2`.
+`a581e2aa0d835579efd59d4abd3ca7a24b916f7064413dcde06a353ce7415e33`.
 `companion_review_catalog.json` contains the same core task definitions and rubrics.
 `companion_review_quality.py` snapshots the matching local task-quality scorer,
 including the existing combined face/shoulder evidence rule for trunk leaning.
@@ -19,6 +19,13 @@ deployed patient app's runner.
 The completion script and markup were refreshed from the local companion on
 2 October 2026 to remove the technical Details disclosure. Scores, coaching,
 Done, transport and camera behavior remain the same.
+
+The guest speech transport now accepts only audio identified as ElevenLabs
+Alira and retains caption/replay UI on a failure. It cannot switch to a device
+voice. `companion_review_voice_lines.json` inventories its fixed prompts and
+every ordered guest task transition; `bake_alira_voice` includes them in the
+shipped Alira pack. Unrecorded corrections use the server's serialized,
+retrying ElevenLabs queue. Credentials are never part of either catalog.
 
 Regenerate both snapshots together when the local camera runner changes. Export only the assembled static template and task metadata;
 never environment files or runtime records.

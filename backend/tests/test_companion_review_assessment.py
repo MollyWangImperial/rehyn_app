@@ -61,6 +61,8 @@ def test_guest_runner_retains_local_ladders_and_never_uses_patient_uploads(clien
     assert "const localReview={enabled:false," in html
     assert "RehynAssessmentLadder" in html and "ladderEvidenceResult" in html
     assert "analysisDetails" not in html
+    assert 'voiceText.textContent = "Using device voice"' not in html
+    assert "const spoke = await playBrowserVoice(text);" not in html
     assert 'id="analysisAreas"' in html and 'id="analysisExit"' in html
     assert '${API_BASE}/assessment/review/tasks?' in html
     assert '"/assessment/review/results"' in html

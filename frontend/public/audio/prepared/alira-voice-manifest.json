@@ -11,8 +11,8 @@
     "use_speaker_boost": true,
     "speed": 0.95
   },
-  "ready": 99,
-  "total": 330,
+  "ready": 176,
+  "total": 407,
   "assets": [
     {
       "group": "initial",
@@ -44,6 +44,34 @@
     },
     {
       "group": "initial",
+      "key": "78e71f617c3af9c842c7ed00884f305a3c3c961d57dc694bd6e43c790b5e5f07",
+      "url": "/audio/prepared/78e71f617c3af9c842c7ed00884f305a3c3c961d57dc694bd6e43c790b5e5f07.mp3",
+      "bytes": 84889,
+      "text": "Next, raise your affected arm from your side toward the first circle at mid height."
+    },
+    {
+      "group": "initial",
+      "key": "f8d6c4ed5e618f688e75e81d4ef58f78e53e8cfc17851854e8ff89c2ae6fc112",
+      "url": "/audio/prepared/f8d6c4ed5e618f688e75e81d4ef58f78e53e8cfc17851854e8ff89c2ae6fc112.mp3",
+      "bytes": 131701,
+      "text": "Slowly raise your affected arm forward and upward, reaching toward the target above. Keep your shoulder relaxed and avoid hiking it up."
+    },
+    {
+      "group": "initial",
+      "key": "3ad06b65d5494b7d257153abfa709f060ec58db838046be2034c546b6f528cd9",
+      "url": "/audio/prepared/3ad06b65d5494b7d257153abfa709f060ec58db838046be2034c546b6f528cd9.mp3",
+      "bytes": 58976,
+      "text": "Hold your affected arm steadily at the upper target for a moment."
+    },
+    {
+      "group": "initial",
+      "key": "15029b464ff1b183cf5e5d8ee3480c0507ada12e1651f8b1b9404050c86a010b",
+      "url": "/audio/prepared/15029b464ff1b183cf5e5d8ee3480c0507ada12e1651f8b1b9404050c86a010b.mp3",
+      "bytes": 100772,
+      "text": "Beautiful. Now, gently lower your affected hand back to the same place on your lap."
+    },
+    {
+      "group": "initial",
       "key": "e9e4c37eb4e30048af050f0bc8fce625599bf4438a074efa9be4d739f2a44552",
       "url": "/audio/prepared/e9e4c37eb4e30048af050f0bc8fce625599bf4438a074efa9be4d739f2a44552.mp3",
       "bytes": 108713,
@@ -72,24 +100,24 @@
     },
     {
       "group": "initial",
-      "key": "a4563d5918386b519b2d24076d768884c9693b2c60d2dd28dd58b8a7b2dd90df",
-      "url": "/audio/prepared/a4563d5918386b519b2d24076d768884c9693b2c60d2dd28dd58b8a7b2dd90df.mp3",
-      "bytes": 56050,
-      "text": "Open your hand wide and show your palm to the camera."
+      "key": "2733f7a733c5177b74caf9732345c59b400f321560bddd15d995873bb0d89e89",
+      "url": "/audio/prepared/2733f7a733c5177b74caf9732345c59b400f321560bddd15d995873bb0d89e89.mp3",
+      "bytes": 169735,
+      "text": "We will begin the hand function package. Bring your affected hand up in front of your chest, with your palm facing the camera. If your hand is already open, keep it open and steady."
     },
     {
       "group": "initial",
-      "key": "9b75df548fe7a116d7e3720a6ad6199509efef15b5da35d1a61ec8254d1891db",
-      "url": "/audio/prepared/9b75df548fe7a116d7e3720a6ad6199509efef15b5da35d1a61ec8254d1891db.mp3",
-      "bytes": 78202,
-      "text": "Now close your hand gently, then open it again. Move slowly and smoothly."
+      "key": "bb54917d6f0bf8f8f6006766d880fb86ef20a84ee1dd33e81577d2228cc6ca0e",
+      "url": "/audio/prepared/bb54917d6f0bf8f8f6006766d880fb86ef20a84ee1dd33e81577d2228cc6ca0e.mp3",
+      "bytes": 127939,
+      "text": "Now slowly open your fingers as wide as you comfortably can, or keep them open if they are already open. Hold your palm open and steady."
     },
     {
       "group": "initial",
-      "key": "43ba8fc1e2cc9b1511cc353426f4ed01d7460c7630972449bc4bbcb1d4d796d8",
-      "url": "/audio/prepared/43ba8fc1e2cc9b1511cc353426f4ed01d7460c7630972449bc4bbcb1d4d796d8.mp3",
-      "bytes": 69425,
-      "text": "Well done. Lower your affected hand to the same place on your lap."
+      "key": "8f807579c7b65d498f7f98c108f2e82d62e00adc3f8ae7d356fe06c4ede49f19",
+      "url": "/audio/prepared/8f807579c7b65d498f7f98c108f2e82d62e00adc3f8ae7d356fe06c4ede49f19.mp3",
+      "bytes": 72351,
+      "text": "Good. Relax your hand and lower it to the same place on your lap."
     },
     {
       "group": "initial",
@@ -111,6 +139,27 @@
       "url": "/audio/prepared/77fa65ab5fbb7fe493dd2dfe110eacda346f20476cdfb19b7149a96821ad9294.mp3",
       "bytes": 79874,
       "text": "Separate your fingers, then lower your affected hand to the same place on your lap."
+    },
+    {
+      "group": "initial",
+      "key": "a4563d5918386b519b2d24076d768884c9693b2c60d2dd28dd58b8a7b2dd90df",
+      "url": "/audio/prepared/a4563d5918386b519b2d24076d768884c9693b2c60d2dd28dd58b8a7b2dd90df.mp3",
+      "bytes": 56050,
+      "text": "Open your hand wide and show your palm to the camera."
+    },
+    {
+      "group": "initial",
+      "key": "9b75df548fe7a116d7e3720a6ad6199509efef15b5da35d1a61ec8254d1891db",
+      "url": "/audio/prepared/9b75df548fe7a116d7e3720a6ad6199509efef15b5da35d1a61ec8254d1891db.mp3",
+      "bytes": 78202,
+      "text": "Now close your hand gently, then open it again. Move slowly and smoothly."
+    },
+    {
+      "group": "initial",
+      "key": "43ba8fc1e2cc9b1511cc353426f4ed01d7460c7630972449bc4bbcb1d4d796d8",
+      "url": "/audio/prepared/43ba8fc1e2cc9b1511cc353426f4ed01d7460c7630972449bc4bbcb1d4d796d8.mp3",
+      "bytes": 69425,
+      "text": "Well done. Lower your affected hand to the same place on your lap."
     },
     {
       "group": "initial",
@@ -223,34 +272,6 @@
       "url": "/audio/prepared/932ab0de038e6f564edfc3324043c1a38bc9a74210847958f6861c94b7084c44.mp3",
       "bytes": 72351,
       "text": "Excellent! That's the spirit. One step closer to recovery."
-    },
-    {
-      "group": "assessment:upper_limb",
-      "key": "78e71f617c3af9c842c7ed00884f305a3c3c961d57dc694bd6e43c790b5e5f07",
-      "url": "/audio/prepared/78e71f617c3af9c842c7ed00884f305a3c3c961d57dc694bd6e43c790b5e5f07.mp3",
-      "bytes": 84889,
-      "text": "Next, raise your affected arm from your side toward the first circle at mid height."
-    },
-    {
-      "group": "assessment:upper_limb",
-      "key": "f8d6c4ed5e618f688e75e81d4ef58f78e53e8cfc17851854e8ff89c2ae6fc112",
-      "url": "/audio/prepared/f8d6c4ed5e618f688e75e81d4ef58f78e53e8cfc17851854e8ff89c2ae6fc112.mp3",
-      "bytes": 131701,
-      "text": "Slowly raise your affected arm forward and upward, reaching toward the target above. Keep your shoulder relaxed and avoid hiking it up."
-    },
-    {
-      "group": "assessment:upper_limb",
-      "key": "3ad06b65d5494b7d257153abfa709f060ec58db838046be2034c546b6f528cd9",
-      "url": "/audio/prepared/3ad06b65d5494b7d257153abfa709f060ec58db838046be2034c546b6f528cd9.mp3",
-      "bytes": 58976,
-      "text": "Hold your affected arm steadily at the upper target for a moment."
-    },
-    {
-      "group": "assessment:upper_limb",
-      "key": "15029b464ff1b183cf5e5d8ee3480c0507ada12e1651f8b1b9404050c86a010b",
-      "url": "/audio/prepared/15029b464ff1b183cf5e5d8ee3480c0507ada12e1651f8b1b9404050c86a010b.mp3",
-      "bytes": 100772,
-      "text": "Beautiful. Now, gently lower your affected hand back to the same place on your lap."
     },
     {
       "group": "assessment:upper_limb",
@@ -391,27 +412,6 @@
       "url": "/audio/prepared/fb414d00617b3660d044d4aafb1d37160a9e0b1e138d1f77a21121e8819f879a.mp3",
       "bytes": 58976,
       "text": "Magnificent work. Lower both hands together and relax."
-    },
-    {
-      "group": "assessment:hand",
-      "key": "2733f7a733c5177b74caf9732345c59b400f321560bddd15d995873bb0d89e89",
-      "url": "/audio/prepared/2733f7a733c5177b74caf9732345c59b400f321560bddd15d995873bb0d89e89.mp3",
-      "bytes": 169735,
-      "text": "We will begin the hand function package. Bring your affected hand up in front of your chest, with your palm facing the camera. If your hand is already open, keep it open and steady."
-    },
-    {
-      "group": "assessment:hand",
-      "key": "bb54917d6f0bf8f8f6006766d880fb86ef20a84ee1dd33e81577d2228cc6ca0e",
-      "url": "/audio/prepared/bb54917d6f0bf8f8f6006766d880fb86ef20a84ee1dd33e81577d2228cc6ca0e.mp3",
-      "bytes": 127939,
-      "text": "Now slowly open your fingers as wide as you comfortably can, or keep them open if they are already open. Hold your palm open and steady."
-    },
-    {
-      "group": "assessment:hand",
-      "key": "8f807579c7b65d498f7f98c108f2e82d62e00adc3f8ae7d356fe06c4ede49f19",
-      "url": "/audio/prepared/8f807579c7b65d498f7f98c108f2e82d62e00adc3f8ae7d356fe06c4ede49f19.mp3",
-      "bytes": 72351,
-      "text": "Good. Relax your hand and lower it to the same place on your lap."
     },
     {
       "group": "assessment:hand",
@@ -706,6 +706,545 @@
       "url": "/audio/prepared/59c4a0ba762b8bf45cb49b87ec08c9cfa9a5269e63d9e7bd32ea2536555fd038.mp3",
       "bytes": 66499,
       "text": "Bring the affected foot back beside the other foot and settle in the middle."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "760a200f4d9be19d26b3009f3f953fbbd302d613b73a3f03804715a0e89333c0",
+      "url": "/audio/prepared/760a200f4d9be19d26b3009f3f953fbbd302d613b73a3f03804715a0e89333c0.mp3",
+      "bytes": 127521,
+      "text": "Amazing effort! Hand opening check complete. Take a breath. Up next: Thumb and finger pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "56439674e80187a3b1edd6ec76682387be5858ec47015ec992e2745d523a9007",
+      "url": "/audio/prepared/56439674e80187a3b1edd6ec76682387be5858ec47015ec992e2745d523a9007.mp3",
+      "bytes": 87397,
+      "text": "Amazing effort! Hand opening check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "5c8f732f6976af3998dbfac153876d7918b9817db080cb975c9c4098c4bc741f",
+      "url": "/audio/prepared/5c8f732f6976af3998dbfac153876d7918b9817db080cb975c9c4098c4bc741f.mp3",
+      "bytes": 94084,
+      "text": "Amazing effort! Hand opening check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "88eb0670a35d2656756017a754cb3b29992a212f88472b2b7fa45bda8880352c",
+      "url": "/audio/prepared/88eb0670a35d2656756017a754cb3b29992a212f88472b2b7fa45bda8880352c.mp3",
+      "bytes": 106623,
+      "text": "Amazing effort! Hand to mouth check complete. Take a breath. Up next: Hand opening."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "db34142d4f35e0de77a92d212bcdd8e3ed02597319330c9a7df564934b715caa",
+      "url": "/audio/prepared/db34142d4f35e0de77a92d212bcdd8e3ed02597319330c9a7df564934b715caa.mp3",
+      "bytes": 116236,
+      "text": "Amazing effort! Hand to mouth check complete. Take a breath. Up next: Thumb and finger pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "af0dc34a2fc6459df607fa5231a0373410bbd791539b3ba2af4c3e392564d44f",
+      "url": "/audio/prepared/af0dc34a2fc6459df607fa5231a0373410bbd791539b3ba2af4c3e392564d44f.mp3",
+      "bytes": 106623,
+      "text": "Amazing effort! Hand to mouth check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "7efab5956c70891d13de02ebab40d72562e54d9ec04db7283604e64cbd1083ae",
+      "url": "/audio/prepared/7efab5956c70891d13de02ebab40d72562e54d9ec04db7283604e64cbd1083ae.mp3",
+      "bytes": 94084,
+      "text": "Amazing effort! Hand to mouth check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "e1a24673a5387052c06dcb245886cbf91e5e58bbf080a3cb672e6507fbdc61f0",
+      "url": "/audio/prepared/e1a24673a5387052c06dcb245886cbf91e5e58bbf080a3cb672e6507fbdc61f0.mp3",
+      "bytes": 99936,
+      "text": "Amazing effort! Thumb and finger pinch check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "b1f9f8e2e8d2df5d2be2fab61599f312d627b8d4e92f621a28c1e80ba432ec7f",
+      "url": "/audio/prepared/b1f9f8e2e8d2df5d2be2fab61599f312d627b8d4e92f621a28c1e80ba432ec7f.mp3",
+      "bytes": 110385,
+      "text": "Amazing effort! Thumb and finger pinch check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "df382c862b43479ff5fa283bed9ac8d6d6eecf64794f01ef3b4256812e8116ce",
+      "url": "/audio/prepared/df382c862b43479ff5fa283bed9ac8d6d6eecf64794f01ef3b4256812e8116ce.mp3",
+      "bytes": 88651,
+      "text": "Amazing effort! Walking check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "e199d11b98263aae0e0641cb1ff9da6ddfb056a0ae47633a66cbb66dc776b19a",
+      "url": "/audio/prepared/e199d11b98263aae0e0641cb1ff9da6ddfb056a0ae47633a66cbb66dc776b19a.mp3",
+      "bytes": 163884,
+      "text": "Ask the person beside you to help only in the way your therapist has shown you. Do not pull or force the arm. This attempt will be marked as assisted. Stop if it hurts."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "2c7591c982164c92d5a020ae3156aaf5e41cb7bec9d98cf9f661501bde6949de",
+      "url": "/audio/prepared/2c7591c982164c92d5a020ae3156aaf5e41cb7bec9d98cf9f661501bde6949de.mp3",
+      "bytes": 86561,
+      "text": "Bravo! Walking check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "5c422d925a3bbdb4013bf3c616a081caa360d90d44ada1390d5f742d5a2fd235",
+      "url": "/audio/prepared/5c422d925a3bbdb4013bf3c616a081caa360d90d44ada1390d5f742d5a2fd235.mp3",
+      "bytes": 93248,
+      "text": "Brilliant! Hand opening check complete. Take a breath. Up next: Thumb and finger pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "2828a6e663f5fa845a81850dcc6de82b58df92cd9b1087a4e2128b175d6dcb9e",
+      "url": "/audio/prepared/2828a6e663f5fa845a81850dcc6de82b58df92cd9b1087a4e2128b175d6dcb9e.mp3",
+      "bytes": 75276,
+      "text": "Brilliant! Hand opening check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "f0dee22980f93576fa783e54060fc785052855247b633f2bbde4b0bc8f0325af",
+      "url": "/audio/prepared/f0dee22980f93576fa783e54060fc785052855247b633f2bbde4b0bc8f0325af.mp3",
+      "bytes": 96174,
+      "text": "Brilliant! Hand opening check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "9eb37544ce1454f7ec40d7f3856483c8e77cb0572e2d0323e497fb822b78d48e",
+      "url": "/audio/prepared/9eb37544ce1454f7ec40d7f3856483c8e77cb0572e2d0323e497fb822b78d48e.mp3",
+      "bytes": 87397,
+      "text": "Brilliant! Thumb and finger pinch check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "aec5f33567cf8d89de9473e7eac82b7ff9e74ab4abacb5f3f5ee5ddd7dacf05f",
+      "url": "/audio/prepared/aec5f33567cf8d89de9473e7eac82b7ff9e74ab4abacb5f3f5ee5ddd7dacf05f.mp3",
+      "bytes": 110385,
+      "text": "Brilliant! Thumb and finger pinch check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "686689d549e721807975d71f3fc63f1e537f251dc5635344652e98ac22c06191",
+      "url": "/audio/prepared/686689d549e721807975d71f3fc63f1e537f251dc5635344652e98ac22c06191.mp3",
+      "bytes": 73186,
+      "text": "Brilliant! Walking check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "de76afea78b2fba6bebb3756e85326b7f50527a09d735497692fec177d366ed6",
+      "url": "/audio/prepared/de76afea78b2fba6bebb3756e85326b7f50527a09d735497692fec177d366ed6.mp3",
+      "bytes": 78202,
+      "text": "Bring your thumb and index finger toward each other as far as is comfortable."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "f32398c5f568bbb442a28ff75a5d1bcd78d159dcb9e53ad2bc291ff87cfa0476",
+      "url": "/audio/prepared/f32398c5f568bbb442a28ff75a5d1bcd78d159dcb9e53ad2bc291ff87cfa0476.mp3",
+      "bytes": 316857,
+      "text": "For the walking record, ask a carer or family member to take a short video from the front while you walk toward the camera. Then choose or record the video here. Any walking video will be accepted for now. Your survey identifies the affected area and side; a numeric score is shown only from measurable task evidence."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "3364d6cec1d83628d3fe3bb85af87c61c2373908a0efb2dd746daa9be55b93b7",
+      "url": "/audio/prepared/3364d6cec1d83628d3fe3bb85af87c61c2373908a0efb2dd746daa9be55b93b7.mp3",
+      "bytes": 91577,
+      "text": "From the starting circle, bring your hand to your mouth and hold. Keep your head comfortably still."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "584784e1fd8f4e49d45532fb12b75b1782d1c8cff8e841748cc58a77e2c622e1",
+      "url": "/audio/prepared/584784e1fd8f4e49d45532fb12b75b1782d1c8cff8e841748cc58a77e2c622e1.mp3",
+      "bytes": 179348,
+      "text": "I have not detected a completed movement. If needed, ask the person beside you to help in the way your therapist has shown you. Choose assisted practice, try again, or finish for now."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "c8362835725aa5d446801aea4bdade38fe675b815fc055a7b5a02e289624414b",
+      "url": "/audio/prepared/c8362835725aa5d446801aea4bdade38fe675b815fc055a7b5a02e289624414b.mp3",
+      "bytes": 52288,
+      "text": "Keep your affected hand resting on your lap for a moment."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "0280de4cbce41210c16647a8fe608784c4aabbf54d473656bc1ed06a9ac02dda",
+      "url": "/audio/prepared/0280de4cbce41210c16647a8fe608784c4aabbf54d473656bc1ed06a9ac02dda.mp3",
+      "bytes": 73186,
+      "text": "Keep your hand at the same circle. Turn your palm to face the camera and hold it there."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "c2a074be5b960a2c68e8d7f44f4062e115d15a9f5bdf046dfd1c2e8b9abfdf94",
+      "url": "/audio/prepared/c2a074be5b960a2c68e8d7f44f4062e115d15a9f5bdf046dfd1c2e8b9abfdf94.mp3",
+      "bytes": 51035,
+      "text": "Keep your hand at the starting circle and hold."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "ab39766a504ef3d86cfa8a702b07825fcb7508872a23b322dcc77843657ccde4",
+      "url": "/audio/prepared/ab39766a504ef3d86cfa8a702b07825fcb7508872a23b322dcc77843657ccde4.mp3",
+      "bytes": 114564,
+      "text": "Keep your palm facing the camera at the same circle. Open your fingers as far as is comfortable and hold."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "e4710839ed693cf94b49b5fa4192bf56543ff304c48709c5f4e3d1ac86108e05",
+      "url": "/audio/prepared/e4710839ed693cf94b49b5fa4192bf56543ff304c48709c5f4e3d1ac86108e05.mp3",
+      "bytes": 95338,
+      "text": "Keep your palm facing the camera at the same circle. Open your fingers wide and hold."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "8077b10e0666dc397b0ef1b7b94164b6948c1baac462dc17061e7bb87c65af1d",
+      "url": "/audio/prepared/8077b10e0666dc397b0ef1b7b94164b6948c1baac462dc17061e7bb87c65af1d.mp3",
+      "bytes": 151345,
+      "text": "Let us pause. I have not detected a completed movement. If you need help, wait until a carer or family member is with you. You can try again or finish for now."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "36365b74457d6e06dffcd060a2b61118886a527cdfad8a1ac0fe3ab538b24ab9",
+      "url": "/audio/prepared/36365b74457d6e06dffcd060a2b61118886a527cdfad8a1ac0fe3ab538b24ab9.mp3",
+      "bytes": 36824,
+      "text": "Let your hand rest back on your lap."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "38edcedbdfc133adb28d9ab9ff222576ad90432934ee2b846c33ef843d3e4229",
+      "url": "/audio/prepared/38edcedbdfc133adb28d9ab9ff222576ad90432934ee2b846c33ef843d3e4229.mp3",
+      "bytes": 117072,
+      "text": "Magnificent! Thumb and finger pinch check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "cb3df46a6dae1fa707d723e93847b29447ad5237c098dda120accf50ba62d958",
+      "url": "/audio/prepared/cb3df46a6dae1fa707d723e93847b29447ad5237c098dda120accf50ba62d958.mp3",
+      "bytes": 117072,
+      "text": "Magnificent! Thumb and finger pinch check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "11d7ee6cad714d5b6f3439eeaa90cf0d65b14f560d4445988ce6f847eb4261d8",
+      "url": "/audio/prepared/11d7ee6cad714d5b6f3439eeaa90cf0d65b14f560d4445988ce6f847eb4261d8.mp3",
+      "bytes": 96174,
+      "text": "Magnificent! Walking check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "9f003c71d293a6eadbe70b23a6b3f388b703beed767437670892c193f1f9fb2f",
+      "url": "/audio/prepared/9f003c71d293a6eadbe70b23a6b3f388b703beed767437670892c193f1f9fb2f.mp3",
+      "bytes": 64409,
+      "text": "Move your hand as far as is comfortable. Every movement counts."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "4b3a0e2b2b5a3e9f925a212384c26f239b53ac376f4c7f3ffcfbf6d6cf59ec25",
+      "url": "/audio/prepared/4b3a0e2b2b5a3e9f925a212384c26f239b53ac376f4c7f3ffcfbf6d6cf59ec25.mp3",
+      "bytes": 61066,
+      "text": "Raise your affected hand to the starting circle and hold it there."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "aa62ee77197f6b01de1e169e7e336b882e0234b06a242bf28d9445d14b4203f7",
+      "url": "/audio/prepared/aa62ee77197f6b01de1e169e7e336b882e0234b06a242bf28d9445d14b4203f7.mp3",
+      "bytes": 51035,
+      "text": "Reach the circle and hold your hand there for a moment."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "720ad5f8cd4930b46cb099ffa9339a6525728cfd3cadccac9d278363376d5627",
+      "url": "/audio/prepared/720ad5f8cd4930b46cb099ffa9339a6525728cfd3cadccac9d278363376d5627.mp3",
+      "bytes": 139224,
+      "text": "Thank you for trying. I will bring this low target a little closer to your resting hand. Wait for the circle to stop, then try again comfortably."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "bd5de78797d45b30d3f84f364bde32efbeaad855e4d7372978290c2fa3186227",
+      "url": "/audio/prepared/bd5de78797d45b30d3f84f364bde32efbeaad855e4d7372978290c2fa3186227.mp3",
+      "bytes": 121252,
+      "text": "Thank you for trying. I will lower the target to make the next reach easier. Wait for the circle to stop, then try again comfortably."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "d5de1427885fde0101af67e5fac18b75c702aa04611d9411ab9e4ad55365eaa6",
+      "url": "/audio/prepared/d5de1427885fde0101af67e5fac18b75c702aa04611d9411ab9e4ad55365eaa6.mp3",
+      "bytes": 90323,
+      "text": "Thank you for your effort! Hand opening check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "1397779b439b55c9d83f8d20128cda33edac5aa2d28889a247623672d6f9e26b",
+      "url": "/audio/prepared/1397779b439b55c9d83f8d20128cda33edac5aa2d28889a247623672d6f9e26b.mp3",
+      "bytes": 111221,
+      "text": "Thank you for your effort! Hand opening left for another day. Take a breath. Up next: Thumb and finger pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "e6cd6bcbaf64444c459bff4759f35992e2af2111af758d3b490b356b0eac6122",
+      "url": "/audio/prepared/e6cd6bcbaf64444c459bff4759f35992e2af2111af758d3b490b356b0eac6122.mp3",
+      "bytes": 112475,
+      "text": "Thank you for your effort! Hand opening left for another day. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "cb1f52bbfed665106f2a525307cb7f73b4039842d95115a010a8d9aa26987c0e",
+      "url": "/audio/prepared/cb1f52bbfed665106f2a525307cb7f73b4039842d95115a010a8d9aa26987c0e.mp3",
+      "bytes": 114146,
+      "text": "Thank you for your effort! Hand opening left for another day. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "8d7e162ed15f885ba7bb3286050f670cfe2515f9e4a3897e9de974b602f94979",
+      "url": "/audio/prepared/8d7e162ed15f885ba7bb3286050f670cfe2515f9e4a3897e9de974b602f94979.mp3",
+      "bytes": 142986,
+      "text": "Thank you for your effort! Hand to mouth check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "30b0604b38c58ed7e3dcb8c9ef42d3afd163e1106efd806a42755d3ea975695d",
+      "url": "/audio/prepared/30b0604b38c58ed7e3dcb8c9ef42d3afd163e1106efd806a42755d3ea975695d.mp3",
+      "bytes": 129611,
+      "text": "Thank you for your effort! Hand to mouth left for another day. Take a breath. Up next: Hand opening."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "b496b10eff19a9745f9a43ae369d6bf4a69fe651df4e660b598aa354126d15cf",
+      "url": "/audio/prepared/b496b10eff19a9745f9a43ae369d6bf4a69fe651df4e660b598aa354126d15cf.mp3",
+      "bytes": 104951,
+      "text": "Thank you for your effort! Hand to mouth left for another day. Take a breath. Up next: Thumb and finger pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "3ac1ca9dd9e9b5cf5a7713defb3004bcb61a65dc9d61fb28e0b9ac11254cd166",
+      "url": "/audio/prepared/3ac1ca9dd9e9b5cf5a7713defb3004bcb61a65dc9d61fb28e0b9ac11254cd166.mp3",
+      "bytes": 107459,
+      "text": "Thank you for your effort! Hand to mouth left for another day. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "285fda58ad9de508e600e1d75dda0a524365e242407f8ad7ebf1e38461ea7388",
+      "url": "/audio/prepared/285fda58ad9de508e600e1d75dda0a524365e242407f8ad7ebf1e38461ea7388.mp3",
+      "bytes": 99936,
+      "text": "Thank you for your effort! Hand to mouth left for another day. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "eac05ff32b97512e2bc3140b599ef765675823305e0f56c3ddae27d13820d024",
+      "url": "/audio/prepared/eac05ff32b97512e2bc3140b599ef765675823305e0f56c3ddae27d13820d024.mp3",
+      "bytes": 135462,
+      "text": "Thank you for your effort! Seated reach check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "51086fbe701af816e30beaaebf5aed9832c9e191e46178fa7265bf00e84af9f1",
+      "url": "/audio/prepared/51086fbe701af816e30beaaebf5aed9832c9e191e46178fa7265bf00e84af9f1.mp3",
+      "bytes": 111639,
+      "text": "Thank you for your effort! Seated reach left for another day. Take a breath. Up next: Hand opening."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "e15ef3cd5e615ca3657a34db45d152e77f26147bb52ee52b3426ad40cd127cee",
+      "url": "/audio/prepared/e15ef3cd5e615ca3657a34db45d152e77f26147bb52ee52b3426ad40cd127cee.mp3",
+      "bytes": 122088,
+      "text": "Thank you for your effort! Seated reach left for another day. Take a breath. Up next: Hand to mouth."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "94eff0642319285fd7586f4176c3f7ffff473c3330a1a33a1a72bc8f2655c81b",
+      "url": "/audio/prepared/94eff0642319285fd7586f4176c3f7ffff473c3330a1a33a1a72bc8f2655c81b.mp3",
+      "bytes": 125013,
+      "text": "Thank you for your effort! Seated reach left for another day. Take a breath. Up next: Thumb and finger pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "c867c0197f566f5e82f8f43ae35bbc8a0631b71da31d83df60a296f210a9dd2d",
+      "url": "/audio/prepared/c867c0197f566f5e82f8f43ae35bbc8a0631b71da31d83df60a296f210a9dd2d.mp3",
+      "bytes": 121252,
+      "text": "Thank you for your effort! Seated reach left for another day. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "f0296076cf0fdf8a00e58fc7b72f69ed00fec73323e9d46470bc0ac04a9b9eeb",
+      "url": "/audio/prepared/f0296076cf0fdf8a00e58fc7b72f69ed00fec73323e9d46470bc0ac04a9b9eeb.mp3",
+      "bytes": 102026,
+      "text": "Thank you for your effort! Seated reach left for another day. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "5103ee708eaa09f9874d9857f9c181797148a78e9d98907d718895c6eed8670c",
+      "url": "/audio/prepared/5103ee708eaa09f9874d9857f9c181797148a78e9d98907d718895c6eed8670c.mp3",
+      "bytes": 103697,
+      "text": "Thank you for your effort! Thumb and finger pinch check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "e33f57f999e176b85be734aebff76b2ba14f61a125fe1dc30c4ebd0978a03167",
+      "url": "/audio/prepared/e33f57f999e176b85be734aebff76b2ba14f61a125fe1dc30c4ebd0978a03167.mp3",
+      "bytes": 115400,
+      "text": "Thank you for your effort! Thumb and finger pinch left for another day. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "389fdc40b18cd1ede88dbe27ff69ad177b6bdb513cbceeaf71aa7785437ebbd1",
+      "url": "/audio/prepared/389fdc40b18cd1ede88dbe27ff69ad177b6bdb513cbceeaf71aa7785437ebbd1.mp3",
+      "bytes": 141314,
+      "text": "Thank you for your effort! Thumb and finger pinch left for another day. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "044874697aab44255fa18b88e19186767c9f6bd3d3e428c66643b04aad6448ff",
+      "url": "/audio/prepared/044874697aab44255fa18b88e19186767c9f6bd3d3e428c66643b04aad6448ff.mp3",
+      "bytes": 84889,
+      "text": "Thank you for your effort! Walking check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "8a22cb9106f58c389bbb9ae5c04ac18af76820b0014caad1b218f2b782a2e7c9",
+      "url": "/audio/prepared/8a22cb9106f58c389bbb9ae5c04ac18af76820b0014caad1b218f2b782a2e7c9.mp3",
+      "bytes": 92413,
+      "text": "Thank you for your effort! Walking left for another day. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "60f68fb5283ccf0fdafc410eb9de9e4578a26b2380cff4f8ad9f52de66e970ad",
+      "url": "/audio/prepared/60f68fb5283ccf0fdafc410eb9de9e4578a26b2380cff4f8ad9f52de66e970ad.mp3",
+      "bytes": 53124,
+      "text": "Touch your thumb to your index finger and hold the pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "6c5578a4143f69064ba24523317098928f1c700fa3e4196328271c1e4ff69600",
+      "url": "/audio/prepared/6c5578a4143f69064ba24523317098928f1c700fa3e4196328271c1e4ff69600.mp3",
+      "bytes": 65663,
+      "text": "We could not measure hand opening, so we will leave pinch unmeasured today."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "bbe22ff7cbf7b86ee2634927d82f9b1ae0ae01e21522d7f26476612e6f2fdb34",
+      "url": "/audio/prepared/bbe22ff7cbf7b86ee2634927d82f9b1ae0ae01e21522d7f26476612e6f2fdb34.mp3",
+      "bytes": 52288,
+      "text": "We will start with hand opening before trying pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "da9718580d050478dead08df3f3c4840a3eb0a0e45c5d31d6a2ac7fecdec8144",
+      "url": "/audio/prepared/da9718580d050478dead08df3f3c4840a3eb0a0e45c5d31d6a2ac7fecdec8144.mp3",
+      "bytes": 107877,
+      "text": "Wonderful work! Hand opening check complete. Take a breath. Up next: Thumb and finger pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "c261b66b13e1b0fe552f5bdcfa18b9c3be506b6551c1f8a29a1b277682cfe530",
+      "url": "/audio/prepared/c261b66b13e1b0fe552f5bdcfa18b9c3be506b6551c1f8a29a1b277682cfe530.mp3",
+      "bytes": 99100,
+      "text": "Wonderful work! Hand opening check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "a61105044ee39a63e23d6d7e503953a32d13cbe63aca48ad916e531e2ef3bef3",
+      "url": "/audio/prepared/a61105044ee39a63e23d6d7e503953a32d13cbe63aca48ad916e531e2ef3bef3.mp3",
+      "bytes": 103697,
+      "text": "Wonderful work! Hand opening check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "2db3da9a5bfc7ca1790682e24b439c7c2316aaa566febe17bfd4d6f946f6d40c",
+      "url": "/audio/prepared/2db3da9a5bfc7ca1790682e24b439c7c2316aaa566febe17bfd4d6f946f6d40c.mp3",
+      "bytes": 94084,
+      "text": "Wonderful work! Hand to mouth check complete. Take a breath. Up next: Hand opening."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "d7ae47b6c3da58fd5220064808a55dcbbaf50f1320be97c2227632eae51acd5d",
+      "url": "/audio/prepared/d7ae47b6c3da58fd5220064808a55dcbbaf50f1320be97c2227632eae51acd5d.mp3",
+      "bytes": 100772,
+      "text": "Wonderful work! Hand to mouth check complete. Take a breath. Up next: Thumb and finger pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "a27b70ba79f08512dfccb40ae1608dd1f362fb49d44c45a7c5f5003117ed3fbe",
+      "url": "/audio/prepared/a27b70ba79f08512dfccb40ae1608dd1f362fb49d44c45a7c5f5003117ed3fbe.mp3",
+      "bytes": 113311,
+      "text": "Wonderful work! Hand to mouth check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "baccadb0472871a5415f631959701b555daa835f2c1b5cb5cb8b28bcef5e4564",
+      "url": "/audio/prepared/baccadb0472871a5415f631959701b555daa835f2c1b5cb5cb8b28bcef5e4564.mp3",
+      "bytes": 87397,
+      "text": "Wonderful work! Hand to mouth check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "dd2b46b182aceed5fdbda267c4d58387558f57dee5082d6c9bd6eb029c606082",
+      "url": "/audio/prepared/dd2b46b182aceed5fdbda267c4d58387558f57dee5082d6c9bd6eb029c606082.mp3",
+      "bytes": 98264,
+      "text": "Wonderful work! Seated reach check complete. Take a breath. Up next: Hand opening."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "8c0aa9105aa7524864cb7d4ba67564c09b053ecc21b7d8955d47ebe4ce57c846",
+      "url": "/audio/prepared/8c0aa9105aa7524864cb7d4ba67564c09b053ecc21b7d8955d47ebe4ce57c846.mp3",
+      "bytes": 102026,
+      "text": "Wonderful work! Seated reach check complete. Take a breath. Up next: Hand to mouth."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "54da410c48db17a0f675bc052bde1b4326175879892de3c915614394b6e6bc19",
+      "url": "/audio/prepared/54da410c48db17a0f675bc052bde1b4326175879892de3c915614394b6e6bc19.mp3",
+      "bytes": 128775,
+      "text": "Wonderful work! Seated reach check complete. Take a breath. Up next: Thumb and finger pinch."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "66613b69f06bf38f6ec40ebd88232d166512d038c721c60dbc2eb03441b90cd7",
+      "url": "/audio/prepared/66613b69f06bf38f6ec40ebd88232d166512d038c721c60dbc2eb03441b90cd7.mp3",
+      "bytes": 102026,
+      "text": "Wonderful work! Seated reach check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "8a7506d954ab5c25cdbc4a9dd13765970f2d645bd2849e9aad7a04a04b4709f2",
+      "url": "/audio/prepared/8a7506d954ab5c25cdbc4a9dd13765970f2d645bd2849e9aad7a04a04b4709f2.mp3",
+      "bytes": 104533,
+      "text": "Wonderful work! Seated reach check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "5005566558c2fc25ed538ed9e90cb9c76d7c8be2af1f062d77109efa220afa52",
+      "url": "/audio/prepared/5005566558c2fc25ed538ed9e90cb9c76d7c8be2af1f062d77109efa220afa52.mp3",
+      "bytes": 128775,
+      "text": "Wonderful work! Thumb and finger pinch check complete. Take a breath. Up next: Walking."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "a9b365a9cf48efc3bbd9b599c09c3a2345cea7d458adbc94b9c61edf5ba65773",
+      "url": "/audio/prepared/a9b365a9cf48efc3bbd9b599c09c3a2345cea7d458adbc94b9c61edf5ba65773.mp3",
+      "bytes": 104951,
+      "text": "Wonderful work! Thumb and finger pinch check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "caa0beeaaf3276cf3fe862bee6f558b7290b40dd466dc1234192b03352f1c9d9",
+      "url": "/audio/prepared/caa0beeaaf3276cf3fe862bee6f558b7290b40dd466dc1234192b03352f1c9d9.mp3",
+      "bytes": 91577,
+      "text": "Wonderful work! Walking check complete. Take a breath. Your movement check is finished."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "965061f085736147eef63d0387b6733077e4569fdb81a0fe5169c1ea74d31a81",
+      "url": "/audio/prepared/965061f085736147eef63d0387b6733077e4569fdb81a0fe5169c1ea74d31a81.mp3",
+      "bytes": 167645,
+      "text": "You are doing well to keep trying. If comfortable, try once more toward the centre of the circle. Take your time and keep your shoulder relaxed. You can stop or ask for help."
+    },
+    {
+      "group": "assessment:companion-review",
+      "key": "98174a6cc03d2febe258d6878db61c347be676623bb4bb2457e1d659cadc9a7a",
+      "url": "/audio/prepared/98174a6cc03d2febe258d6878db61c347be676623bb4bb2457e1d659cadc9a7a.mp3",
+      "bytes": 62737,
+      "text": "You are doing well to keep trying. If comfortable, try once more."
     }
   ]
 }

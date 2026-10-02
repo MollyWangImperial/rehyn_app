@@ -4307,6 +4307,9 @@ async function fetchVoiceAudio(text,purpose="instruction"){
     .then(async (res) => {
       if(!res.ok) throw new Error("tts failed");
       const data = await res.json();
+      if(data.provider !== "elevenlabs" || data.voice !== "alira" || !data.audio_b64){
+        throw new Error("Alira audio is temporarily unavailable");
+      }
       voiceAudioCache.set(key, data.audio_b64);
       return data.audio_b64;
     })
@@ -4384,13 +4387,9 @@ async function playVoice(text,purpose="instruction"){
     });
     voiceText.textContent = "Instruction ready · follow the target";
   }catch(e){
-    voiceText.textContent = "Using device voice";
-    const spoke = await playBrowserVoice(text);
-    if(spoke){
-      voiceText.textContent = "Instruction ready · follow the target";
-    }else{
-      offerVoiceRetry(text,purpose);
-    }
+    // Keep Alira's voice consistent. Captions and replay stay available if
+    // her audio cannot be played; do not silently switch to a device voice.
+    offerVoiceRetry(text,purpose);
     postRN({type:"voice_error", message:String(e)});
   }
 }

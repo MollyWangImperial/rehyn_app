@@ -93,6 +93,10 @@ def line_groups() -> list[tuple[str, list[str]]]:
     for package_id, package in packages.items():
         if package_id != "initial":
             groups.append((f"assessment:{package_id}", _collect(package)))
+    # The public companion has a newer ladder runner than the patient app.
+    # Its fixed cues and finite task transitions must be recorded too.
+    companion = json.loads((server.ROOT_DIR / "companion_review_voice_lines.json").read_text(encoding="utf-8"))
+    groups.append(("assessment:companion-review", companion["lines"]))
     groups.append((
         "exercise:shared",
         [
