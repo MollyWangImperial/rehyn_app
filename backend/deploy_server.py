@@ -14,6 +14,8 @@ os.environ.setdefault("ELEVENLABS_VOICE_SCOPE", "all")
 
 from backend.server import app, ASSESSMENT_RUBRICS, EXERCISE_LIBRARY, _survey_candidate_is_eligible
 from backend.companion_review_testing import create_review_testing_router
+from backend import server as assessment_service
+from backend.companion_review_assessment import create_guest_review_router
 from backend.local_assessment_recordings import router as local_recordings_router
 from backend.testing_reach_voice import router as testing_reach_voice_router
 from backend.testing_mouth_voice import router as testing_mouth_voice_router
@@ -22,6 +24,7 @@ app.include_router(local_recordings_router)
 app.include_router(testing_reach_voice_router)
 app.include_router(testing_mouth_voice_router)
 app.include_router(create_review_testing_router(ASSESSMENT_RUBRICS, EXERCISE_LIBRARY, _survey_candidate_is_eligible))
+app.include_router(create_guest_review_router(assessment_service))
 
 
 WEB_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"

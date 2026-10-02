@@ -1,0 +1,753 @@
+{
+  "package_id": "initial",
+  "package_title": "Initial Functional Assessment",
+  "package_subtitle": "Survey-selected arm, hand, and comfortable-walking observations matched to current ability",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Seated Forward Reach",
+      "view": "Side view",
+      "focus": "Reach distance, elbow extension, movement quality, trunk compensation",
+      "steps": [
+        {
+          "id": "T1-S1",
+          "voice": "Welcome. Sit upright with your affected hand on your lap. Slowly lift that hand forward to the first circle.",
+          "target": {
+            "x": 0.64,
+            "y": 0.6,
+            "r": 0.11,
+            "landmark": "WRIST"
+          },
+          "hold_ms": 900,
+          "caption": "Initiate the forward reach",
+          "failure_phenotype": {
+            "code": "REACH_INITIATION_IMPAIRED",
+            "domain": "reach_initiation",
+            "label": "Difficulty initiating a forward reach",
+            "description": "The affected arm did not complete the initial movement away from the lap toward the first reach position.",
+            "severity": "moderate",
+            "source": "Fugl-Meyer UE; task-specific movement observation",
+            "rehab_code": "REACH_INCOMPLETE"
+          }
+        },
+        {
+          "id": "T1-S2",
+          "voice": "Now, slowly reach your affected arm forward, as far as you comfortably can, toward the bright circle in front of you. Keep your back straight and stay relaxed.",
+          "target": {
+            "x": 0.64,
+            "y": 0.4,
+            "r": 0.1,
+            "landmark": "WRIST"
+          },
+          "hold_ms": 1500,
+          "caption": "Reach the target, then keep your hand there. Do not lower it until asked.",
+          "measure": [
+            "reach_distance",
+            "trunk_lean",
+            "elbow_extension"
+          ],
+          "failure_phenotype": {
+            "code": "REACH_INCOMPLETE",
+            "domain": "forward_reach_range",
+            "label": "Limited forward reach",
+            "description": "The affected arm initiated the movement but did not reach the forward target.",
+            "severity": "moderate",
+            "source": "Fugl-Meyer UE; ARAT",
+            "rehab_code": "REACH_INCOMPLETE"
+          }
+        },
+        {
+          "id": "T1-S3",
+          "voice": "Hold your hand steadily at the forward target for a moment.",
+          "target": {
+            "x": 0.64,
+            "y": 0.4,
+            "r": 0.1,
+            "landmark": "WRIST"
+          },
+          "hold_ms": 1500,
+          "movement_required": false,
+          "caption": "Hold the reach steadily",
+          "failure_phenotype": {
+            "code": "REACH_ENDPOINT_UNSTABLE",
+            "domain": "reach_endpoint_control",
+            "label": "Unstable control at the reach target",
+            "description": "The affected arm reached the forward area but did not remain stable at the endpoint.",
+            "severity": "mild",
+            "source": "Task-specific movement observation",
+            "rehab_code": "REACH_INCOMPLETE"
+          }
+        },
+        {
+          "id": "T1-S4",
+          "voice": "Wonderful effort. Slowly bring your affected hand back to your lap.",
+          "target": {
+            "x": 0.5,
+            "y": 0.78,
+            "r": 0.1,
+            "landmark": "LAP_DYNAMIC"
+          },
+          "hold_ms": 1500,
+          "caption": "Return to lap",
+          "failure_phenotype": {
+            "code": "REACH_RETURN_CONTROL_IMPAIRED",
+            "domain": "reach_return_control",
+            "label": "Difficulty controlling the return from a reach",
+            "description": "The affected arm did not complete the controlled return from the forward target to the lap.",
+            "severity": "mild",
+            "source": "Task-specific movement observation",
+            "rehab_code": "REACH_INCOMPLETE"
+          }
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Hand to Mouth",
+      "view": "Side view",
+      "focus": "Hand-to-mouth function, coordination, movement quality, trunk compensation",
+      "steps": [
+        {
+          "id": "T3-S1",
+          "voice": "Let's bring your affected hand toward your mouth. First, lift it from your lap toward the circle at your chest.",
+          "target": {
+            "x": 0.5,
+            "y": 0.48,
+            "r": 0.11,
+            "landmark": "CHEST"
+          },
+          "hold_ms": 1000,
+          "caption": "Lift hand from lap toward chest",
+          "failure_phenotype": {
+            "code": "HAND_LIFT_INITIATION_IMPAIRED",
+            "domain": "hand_to_mouth_initiation",
+            "label": "Difficulty initiating the hand lift",
+            "description": "The affected hand did not complete the initial lift from the lap toward the chest.",
+            "severity": "moderate",
+            "source": "MESUPES; task-specific movement observation",
+            "rehab_code": "H2M_IMPAIRED"
+          }
+        },
+        {
+          "id": "T3-S2",
+          "voice": "Now, slowly bring your hand up to your mouth, as if you were drinking from a cup. Keep your head still.",
+          "target": {
+            "x": 0.5,
+            "y": 0.3,
+            "r": 0.1,
+            "landmark": "MOUTH"
+          },
+          "hold_ms": 1500,
+          "caption": "Hand to mouth",
+          "measure": [
+            "elbow_flexion",
+            "trunk_lean",
+            "coordination"
+          ],
+          "failure_phenotype": {
+            "code": "H2M_IMPAIRED",
+            "domain": "hand_to_mouth_transport",
+            "label": "Difficulty bringing the hand to the mouth",
+            "description": "The affected hand lifted from the lap but did not reach the mouth target.",
+            "severity": "moderate",
+            "source": "Chedoke-McMaster Stroke Assessment; MESUPES",
+            "rehab_code": "H2M_IMPAIRED"
+          }
+        },
+        {
+          "id": "T3-S3",
+          "voice": "Hold your affected hand steadily at your mouth for a moment.",
+          "target": {
+            "x": 0.5,
+            "y": 0.3,
+            "r": 0.1,
+            "landmark": "MOUTH"
+          },
+          "hold_ms": 1500,
+          "movement_required": false,
+          "caption": "Hold hand steadily at mouth",
+          "failure_phenotype": {
+            "code": "HAND_TO_MOUTH_UNSTABLE",
+            "domain": "hand_to_mouth_endpoint_control",
+            "label": "Unstable hand-to-mouth endpoint control",
+            "description": "The affected hand reached the mouth area but did not remain stable there.",
+            "severity": "mild",
+            "source": "Task-specific movement observation",
+            "rehab_code": "H2M_IMPAIRED"
+          }
+        },
+        {
+          "id": "T3-S4",
+          "voice": "Great job. Lower your affected hand back to your lap.",
+          "target": {
+            "x": 0.5,
+            "y": 0.78,
+            "r": 0.1,
+            "landmark": "LAP_DYNAMIC"
+          },
+          "hold_ms": 1500,
+          "caption": "Return to lap",
+          "failure_phenotype": {
+            "code": "HAND_TO_MOUTH_RETURN_IMPAIRED",
+            "domain": "hand_to_mouth_return_control",
+            "label": "Difficulty returning the hand from the mouth",
+            "description": "The affected hand did not complete the controlled return from the mouth to the lap.",
+            "severity": "mild",
+            "source": "Task-specific movement observation",
+            "rehab_code": "H2M_IMPAIRED"
+          }
+        }
+      ]
+    },
+    {
+      "id": "H4",
+      "title": "Open and Close Hand",
+      "view": "Front view",
+      "focus": "Repeated opening, closing, timing, and control",
+      "steps": [
+        {
+          "id": "H4-S1",
+          "voice": "Open your hand wide and show your palm to the camera.",
+          "target": {
+            "x": 0.5,
+            "y": 0.45,
+            "r": 0.12,
+            "landmark": "HAND_OPEN"
+          },
+          "hold_ms": 1500,
+          "caption": "Open hand",
+          "measure": [
+            "hand_opening"
+          ],
+          "failure_phenotype": {
+            "code": "HAND_OPENING",
+            "domain": "active_hand_opening",
+            "label": "Difficulty opening the hand",
+            "description": "The hand did not reach the requested open posture.",
+            "severity": "moderate",
+            "source": "Fugl-Meyer UE hand section",
+            "rehab_code": "HAND_OPENING"
+          }
+        },
+        {
+          "id": "H4-S2",
+          "voice": "Now close your hand gently, then open it again. Move slowly and smoothly.",
+          "target": {
+            "x": 0.5,
+            "y": 0.45,
+            "r": 0.12,
+            "landmark": "WRIST"
+          },
+          "hold_ms": 2500,
+          "caption": "Close and open smoothly",
+          "measure": [
+            "open_close_timing",
+            "movement_smoothness"
+          ],
+          "failure_phenotype": {
+            "code": "HAND_CYCLING_IMPAIRED",
+            "domain": "hand_open_close_control",
+            "label": "Impaired repeated hand opening and closing",
+            "description": "The hand did not complete a controlled close-open cycle.",
+            "severity": "moderate",
+            "source": "Task-specific movement observation",
+            "rehab_code": "HAND_OPENING"
+          }
+        },
+        {
+          "id": "H4-S3",
+          "voice": "Well done. Lower your affected hand to the same place on your lap.",
+          "target": {
+            "x": 0.5,
+            "y": 0.78,
+            "r": 0.1,
+            "landmark": "LAP_DYNAMIC"
+          },
+          "hold_ms": 1200,
+          "caption": "Return hand to the calibrated lap position",
+          "failure_phenotype": {
+            "code": "HAND_RETURN_IMPAIRED",
+            "domain": "hand_return_control",
+            "label": "Difficulty lowering the hand to rest",
+            "description": "The affected hand did not return to the resting position.",
+            "severity": "mild",
+            "source": "Task-specific movement observation",
+            "rehab_code": "HAND_OPENING"
+          }
+        }
+      ]
+    },
+    {
+      "id": "H3",
+      "title": "Thumb-Index Pinch",
+      "view": "Front view",
+      "focus": "Thumb-index opposition, pinch accuracy, pinch stability",
+      "steps": [
+        {
+          "id": "H3-S1",
+          "voice": "Bring your hand up in front of your chest, palm facing you or the camera.",
+          "target": {
+            "x": 0.5,
+            "y": 0.4,
+            "r": 0.1,
+            "landmark": "WRIST"
+          },
+          "hold_ms": 1200,
+          "caption": "Hand ready for pinch",
+          "failure_phenotype": {
+            "code": "PINCH_POSITIONING_IMPAIRED",
+            "domain": "pinch_task_positioning",
+            "label": "Difficulty positioning the hand for pinch",
+            "description": "The affected hand did not reach the working position for pinch.",
+            "severity": "moderate",
+            "source": "Task-specific movement observation",
+            "rehab_code": "PINCH_IMPAIRED"
+          }
+        },
+        {
+          "id": "H3-S2",
+          "voice": "Touch the tip of your thumb to the tip of your index finger, as if pinching a small coin. Hold it steady.",
+          "target": {
+            "x": 0.5,
+            "y": 0.4,
+            "r": 0.12,
+            "landmark": "PINCH",
+            "icon": "coin"
+          },
+          "hold_ms": 1800,
+          "caption": "Pinch thumb and index finger",
+          "measure": [
+            "pinch_distance",
+            "pinch_accuracy",
+            "pinch_stability"
+          ],
+          "failure_phenotype": {
+            "code": "PINCH_IMPAIRED",
+            "domain": "thumb_index_opposition",
+            "label": "Difficulty forming thumb-index pinch",
+            "description": "Thumb-index opposition did not reach the requested pinch configuration.",
+            "severity": "moderate",
+            "source": "ARAT pinch subscale; Fugl-Meyer UE hand section",
+            "rehab_code": "PINCH_IMPAIRED"
+          }
+        },
+        {
+          "id": "H3-S3",
+          "voice": "Separate your fingers, then lower your affected hand to the same place on your lap.",
+          "target": {
+            "x": 0.5,
+            "y": 0.78,
+            "r": 0.1,
+            "landmark": "LAP_DYNAMIC"
+          },
+          "hold_ms": 1200,
+          "caption": "Return hand to the calibrated lap position",
+          "failure_phenotype": {
+            "code": "PINCH_RELEASE_IMPAIRED",
+            "domain": "pinch_release",
+            "label": "Difficulty releasing pinch",
+            "description": "The thumb and index finger did not separate after the pinch.",
+            "severity": "mild",
+            "source": "Task-specific movement observation",
+            "rehab_code": "PINCH_IMPAIRED"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L6",
+      "title": "Comfortable Walk",
+      "view": "Front view",
+      "focus": "Patient-reported mobility with an uploaded frontal walking record",
+      "safety_tier": "spotter_required",
+      "safety_note": "Only attempt this task if walking is already part of your usual routine. Use your normal walking aid and have another person nearby if you normally need support.",
+      "caregiver_recorded": true,
+      "filming_guidance": [
+        "Record a short frontal video with the patient walking toward the camera at their usual comfortable pace.",
+        "Keep the patient's whole body and usual walking aid visible when possible.",
+        "A fixed camera is best. If the route does not fit, move smoothly from a safe position beside the path; do not walk backward in front of the patient.",
+        "The video is saved as an assessment record. Any lower-limb score comes only from measurable evidence in this assessment task; the affected area and side come from the patient's survey."
+      ],
+      "steps": [
+        {
+          "id": "L6-S1",
+          "voice": "For this final walking record, ask a carer or family member to take a short video from the front while you walk toward the camera at your usual comfortable pace. Keep your whole body and usual walking aid visible when possible. A fixed camera is best. If the route does not fit, the recorder may move smoothly from a safe position beside the path, but must not walk backward in front of you.",
+          "target": {
+            "x": 0.22,
+            "y": 0.78,
+            "r": 0.16,
+            "landmark": "WALK_READY"
+          },
+          "hold_ms": 1500,
+          "movement_required": false,
+          "caption": "Upload a short frontal walking video",
+          "failure_phenotype": {
+            "code": "GAIT_SETUP_UNSAFE",
+            "domain": "gait_setup",
+            "label": "Unable to establish a safe walking start",
+            "description": "A safe, fully visible standing position was not established before the walking observation.",
+            "severity": "severe",
+            "source": "Observational gait analysis; task-specific safety screening",
+            "rehab_code": "SUPPORTED_STANDING_CONTROL"
+          }
+        },
+        {
+          "id": "L6-S2",
+          "voice": "Walk toward the camera at your usual comfortable pace for a few natural steps. Do not walk faster or farther than feels safe.",
+          "target": {
+            "x": 0.78,
+            "y": 0.78,
+            "r": 0.17,
+            "landmark": "WALK_ACROSS"
+          },
+          "hold_ms": 900,
+          "caption": "Walk naturally toward the camera",
+          "measure": [],
+          "failure_phenotype": {
+            "code": "GAIT_PROGRESSION_IMPAIRED",
+            "domain": "gait_progression",
+            "label": "Difficulty progressing during walking",
+            "description": "The patient did not complete several observable steps across the camera view at a comfortable pace.",
+            "severity": "severe",
+            "source": "Observational gait analysis",
+            "rehab_code": "GAIT_INITIATION_IMPAIRED"
+          }
+        },
+        {
+          "id": "L6-S3",
+          "voice": "Stop in a safe position. The short frontal walking video is ready to upload.",
+          "target": {
+            "x": 0.78,
+            "y": 0.78,
+            "r": 0.17,
+            "landmark": "WALK_STOPPED"
+          },
+          "hold_ms": 1500,
+          "movement_required": false,
+          "caption": "Stop safely and stand steady",
+          "failure_phenotype": {
+            "code": "GAIT_STOP_CONTROL_IMPAIRED",
+            "domain": "gait_termination",
+            "label": "Difficulty stopping safely after walking",
+            "description": "The patient did not establish a stable supported stop after the walking observation.",
+            "severity": "severe",
+            "source": "Observational gait analysis; task-specific safety screening",
+            "rehab_code": "SUPPORTED_STANDING_CONTROL"
+          }
+        }
+      ]
+    }
+  ],
+  "rubrics": {
+    "T1": {
+      "id": "T1",
+      "label": "Seated Forward Reach",
+      "domain": "upper_limb",
+      "steps": [
+        {
+          "id": "T1-S1",
+          "label": "Initiate the forward reach",
+          "criteria": [
+            {
+              "metric": "elbow_extension",
+              "target": 120,
+              "label": "Elbow extension",
+              "unit": "deg"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike"
+          ]
+        },
+        {
+          "id": "T1-S2",
+          "label": "Reach the target, then keep your hand there. Do not lower it until asked.",
+          "criteria": [
+            {
+              "metric": "elbow_extension",
+              "target": 110,
+              "label": "Elbow extension",
+              "unit": "deg"
+            },
+            {
+              "metric": "arm_elevation",
+              "target": 50,
+              "label": "Arm elevation",
+              "unit": "deg"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike"
+          ]
+        },
+        {
+          "id": "T1-S3",
+          "label": "Hold the reach steadily",
+          "criteria": [
+            {
+              "metric": "elbow_extension",
+              "target": 110,
+              "label": "Elbow extension",
+              "unit": "deg"
+            },
+            {
+              "metric": "arm_elevation",
+              "target": 50,
+              "label": "Arm elevation",
+              "unit": "deg"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike"
+          ]
+        },
+        {
+          "id": "T1-S4",
+          "label": "Return to lap",
+          "criteria": [],
+          "compensations": [],
+          "scoring_method": "target_completion"
+        }
+      ]
+    },
+    "T3": {
+      "id": "T3",
+      "label": "Hand to Mouth",
+      "domain": "upper_limb",
+      "steps": [
+        {
+          "id": "T3-S1",
+          "label": "Lift hand from lap toward chest",
+          "criteria": [
+            {
+              "metric": "arm_elevation",
+              "target": 30,
+              "label": "Arm elevation",
+              "unit": "deg"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike",
+            "head_drop"
+          ]
+        },
+        {
+          "id": "T3-S2",
+          "label": "Hand to mouth",
+          "criteria": [
+            {
+              "metric": "elbow_flexion",
+              "target": 110,
+              "label": "Elbow bend",
+              "unit": "deg"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike",
+            "head_drop"
+          ]
+        },
+        {
+          "id": "T3-S3",
+          "label": "Hold hand steadily at mouth",
+          "criteria": [
+            {
+              "metric": "elbow_flexion",
+              "target": 110,
+              "label": "Elbow bend",
+              "unit": "deg"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike",
+            "head_drop"
+          ]
+        },
+        {
+          "id": "T3-S4",
+          "label": "Return to lap",
+          "criteria": [],
+          "compensations": [],
+          "scoring_method": "target_completion"
+        }
+      ]
+    },
+    "H4": {
+      "id": "H4",
+      "label": "Open and Close Hand",
+      "domain": "hand",
+      "steps": [
+        {
+          "id": "H4-S1",
+          "label": "Open hand",
+          "criteria": [
+            {
+              "metric": "hand_open",
+              "target": 0.8,
+              "label": "Hand opening",
+              "unit": "ratio"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike",
+            "wrist_bend"
+          ]
+        },
+        {
+          "id": "H4-S2",
+          "label": "Close and open smoothly",
+          "criteria": [
+            {
+              "metric": "open_close_cycle",
+              "target": 1,
+              "label": "Close then reopen",
+              "unit": "ratio"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike",
+            "wrist_bend"
+          ]
+        },
+        {
+          "id": "H4-S3",
+          "label": "Return hand to the calibrated lap position",
+          "criteria": [
+            {
+              "metric": "target_control",
+              "target": 0.8,
+              "label": "Target control",
+              "unit": "ratio"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike",
+            "wrist_bend"
+          ]
+        }
+      ]
+    },
+    "H3": {
+      "id": "H3",
+      "label": "Thumb-Index Pinch",
+      "domain": "hand",
+      "steps": [
+        {
+          "id": "H3-S1",
+          "label": "Hand ready for pinch",
+          "criteria": [
+            {
+              "metric": "target_control",
+              "target": 0.8,
+              "label": "Target control",
+              "unit": "ratio"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike",
+            "wrist_bend"
+          ]
+        },
+        {
+          "id": "H3-S2",
+          "label": "Pinch thumb and index finger",
+          "criteria": [
+            {
+              "metric": "pinch",
+              "target": 0.8,
+              "label": "Thumb-index pinch",
+              "unit": "ratio"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike",
+            "wrist_bend"
+          ]
+        },
+        {
+          "id": "H3-S3",
+          "label": "Return hand to the calibrated lap position",
+          "criteria": [
+            {
+              "metric": "target_control",
+              "target": 0.8,
+              "label": "Target control",
+              "unit": "ratio"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "shoulder_hike",
+            "wrist_bend"
+          ]
+        }
+      ]
+    },
+    "L6": {
+      "id": "L6",
+      "label": "Comfortable Walk",
+      "domain": "lower_limb",
+      "steps": [
+        {
+          "id": "L6-S1",
+          "label": "Upload a short frontal walking video",
+          "criteria": [
+            {
+              "metric": "target_control",
+              "target": 0.8,
+              "label": "Target control",
+              "unit": "ratio"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "hip_hike"
+          ]
+        },
+        {
+          "id": "L6-S2",
+          "label": "Walk naturally toward the camera",
+          "criteria": [
+            {
+              "metric": "gait_alternations",
+              "target": 2,
+              "label": "Alternating steps",
+              "unit": "count"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "hip_hike"
+          ]
+        },
+        {
+          "id": "L6-S3",
+          "label": "Stop safely and stand steady",
+          "criteria": [
+            {
+              "metric": "target_control",
+              "target": 0.8,
+              "label": "Target control",
+              "unit": "ratio"
+            }
+          ],
+          "compensations": [
+            "trunk_lean",
+            "hip_hike"
+          ]
+        }
+      ]
+    }
+  }
+}
