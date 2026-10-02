@@ -72,6 +72,22 @@ def test_guest_runner_retains_local_ladders_and_never_uses_patient_uploads(clien
     assert "if(LOCAL_PREVIEW_MODE) return null;" in html
 
 
+@pytest.mark.parametrize("return_to", ["/alira", "/alira?onboarding=1"])
+def test_done_has_a_direct_companion_return_when_the_host_message_is_not_received(client, return_to):
+    response = client.get("/api/pose/review-runner", params={"return_to": return_to})
+    assert response.status_code == 200
+    html = response.text
+    assert f'<a id="analysisExit" href="https://rehyn-recovery-companion.onrender.com{return_to}" target="_top">Done</a>' in html
+    assert '#analysisActions a' in html
+    assert 'window.parent.postMessage(message,"https://rehyn-recovery-companion.onrender.com")' in html
+    assert 'else window.location.assign(LOCAL_PREVIEW_MODE ? window.location.href : "/")' not in html
+
+
+@pytest.mark.parametrize("return_to", ["https://other.example/alira", "//other.example", "/settings", "/alira?token=secret"])
+def test_done_does_not_accept_arbitrary_return_destinations(client, return_to):
+    assert client.get("/api/pose/review-runner", params={"return_to": return_to}).status_code == 422
+
+
 def test_guest_completion_uses_original_scores_and_returns_a_browser_report_without_safety_clearance(client):
     body = result_body()
     response = post(client, body)

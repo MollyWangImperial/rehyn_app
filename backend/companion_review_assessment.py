@@ -35,8 +35,10 @@ def _replace_once(html, original, replacement):
     return html.replace(original, replacement, 1)
 
 
-@lru_cache(maxsize=1)
-def guest_runner_html():
+@lru_cache(maxsize=2)
+def guest_runner_html(return_to="/alira"):
+    if return_to not in ("/alira", "/alira?onboarding=1"):
+        raise ValueError("Unsupported companion return path")
     html = (ROOT / "companion_review_runner.html").read_text(encoding="utf-8")
     html = _replace_once(html, "const LOCAL_PREVIEW_MODE = false;", "const LOCAL_PREVIEW_MODE = true;")
     html = _replace_once(html, 'const CURRENT_USER_ID = URL_PARAMS.get("uid") || "";', 'const CURRENT_USER_ID = "";')
@@ -52,6 +54,30 @@ def guest_runner_html():
           goal: ["eating", "dressing", "walking_house", "going_out", "other"].includes(URL_PARAMS.get("main_goal")) ? URL_PARAMS.get("main_goal") : "",
           has_helper: ladderFlow.helper === true,
         },''')
+    # A real link still returns the patient when the host's exit listener is
+    # unavailable. Only the companion's two Alira routes are valid destinations.
+    html = _replace_once(html,
+        '<button id="analysisExit" type="button">Done</button>',
+        f'<a id="analysisExit" href="{REVIEW_ORIGIN}{return_to}" target="_top">Done</a>')
+    html = _replace_once(html, '#analysisActions button{', '#analysisActions button,#analysisActions a{')
+    html = _replace_once(html, '#analysisActions button:focus-visible{',
+        '#analysisActions a{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}\n  #analysisActions button:focus-visible,#analysisActions a:focus-visible{')
+    html = _replace_once(html,
+        '''    if(window.ReactNativeWebView || window.parent!==window) postRN({type:"exit"});
+    else window.location.assign(LOCAL_PREVIEW_MODE ? window.location.href : "/");''',
+        '    postRN({type:"exit"});')
+    # This route is a browser guest check, not a native WebView. An unrelated
+    # injected native bridge must not swallow its results or its exit message.
+    start = html.index('function postRN(data){')
+    end = html.index('\n}', start) + 2
+    html = html[:start] + '''function postRN(data){
+  const message=JSON.stringify(data);
+  if(window.parent && window.parent!==window){
+    window.parent.postMessage(message,"''' + REVIEW_ORIGIN + '''");
+  }else if(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage==="function"){
+    window.ReactNativeWebView.postMessage(message);
+  }
+}''' + html[end:]
     return html
 
 
@@ -137,9 +163,9 @@ def create_guest_review_router(service):
     router = APIRouter()
 
     @router.get("/api/pose/review-runner", response_class=HTMLResponse)
-    async def review_runner(request: Request):
+    async def review_runner(request: Request, return_to: Literal["/alira", "/alira?onboarding=1"] = "/alira"):
         guest_request(request)
-        return HTMLResponse(guest_runner_html(), headers={"Cache-Control": "no-store",
+        return HTMLResponse(guest_runner_html(return_to), headers={"Cache-Control": "no-store",
             "Content-Security-Policy": "frame-ancestors " + REVIEW_ORIGIN})
 
     @router.get("/api/assessment/review/tasks")
