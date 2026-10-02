@@ -9,14 +9,18 @@ The existing authenticated assessment routes and loopback preview guards remain.
 `companion_review_runner.html` is the assembled camera runner exported from the
 local companion's `assessment-service/backend/server.py` on 2 October 2026. Its
 SHA-256 before the guest transport substitutions is
-`2a85cb4280664396014f36969c9babf86d06c7bb0c2581c7e2a012179d089824`.
+`75ef31a9714da2a37174223690a0d1c381ed4e753a4c2b720542626bde9662b2`.
 `companion_review_catalog.json` contains the same core task definitions and rubrics.
 `companion_review_quality.py` snapshots the matching local task-quality scorer,
 including the existing combined face/shoulder evidence rule for trunk leaning.
 This preserves the local calibration, target ladders, gesture checks, affected
 side, speech gates and completion presentation without changing the separately
-deployed patient app's runner. Regenerate both snapshots together when the local
-camera runner changes. Export only the assembled static template and task metadata;
+deployed patient app's runner.
+The completion script and markup were refreshed from the local companion on
+2 October 2026 to remove the technical Details disclosure. Scores, coaching,
+Done, transport and camera behavior remain the same.
+
+Regenerate both snapshots together when the local camera runner changes. Export only the assembled static template and task metadata;
 never environment files or runtime records.
 
 The guest adapter sets preview mode, clears account context, selects the guest

@@ -766,9 +766,8 @@ if(typeof module!=="undefined"&&module.exports)module.exports={VoiceGuide};
     const summary=byId("analysisFunctionSummary"), scoreNumber=byId("analysisScoreNumber"), scoreUnit=byId("analysisScoreUnit");
     const validScore=value=>typeof value==="number" && Number.isFinite(value) && value>=0 && value<=100;
     const validLevel=value=>Number.isInteger(value) && value>=0 && value<=4;
-    const sectionIds=['analysisAreas','analysisCoaching','analysisDetails','analysisChange'];
+    const sectionIds=['analysisAreas','analysisCoaching','analysisChange'];
     const areaLabels={upper_limb:'Arm',hand:'Hand',lower_limb:'Walking'};
-    const postureLabels={trunk_lean:'leaning forward',shoulder_hike:'lifting your shoulder',head_drop:'bringing your head to your hand',wrist_bend:'bending your wrist'};
     const add=(parent,tag,text,className)=>{const node=doc.createElement(tag);node.textContent=text;if(className)node.className=className;parent.append(node);return node;};
     function showFunctionDetails(data,score){
       const areas=byId('analysisAreas');areas.replaceChildren();
@@ -785,26 +784,11 @@ if(typeof module!=="undefined"&&module.exports)module.exports={VoiceGuide};
       if(comparison?.total_comparable && typeof comparison.total_change==='number'){
         change.textContent=`${comparison.total_change>0?'+':''}${comparison.total_change} from your first assessment`;change.hidden=false;
       }
-      const names=Object.fromEntries(score.tasks.map(task=>[task.task_id,task.task_label || task.task_id]));
       const coaching=byId('analysisCoachingRows');coaching.replaceChildren();
       const confirmed=new Set(score.tasks.flatMap(task=>Object.entries(task.compensations || {}).filter(([,status])=>status==='detected').map(([id])=>id)));
       const copy={trunk_lean:'You leaned forward to help your arm.',shoulder_hike:'You lifted your shoulder to help the movement.',head_drop:'You brought your head toward your hand.',wrist_bend:'You bent your wrist to help the movement.'};
       for(const id of confirmed)if(copy[id])add(coaching,'p',`${copy[id]} That is a normal way to get there. Your exercises will help you practise the movement with less compensation.`);
       byId('analysisCoaching').hidden=!coaching.children.length;
-      const details=byId('analysisDetailsContent');details.replaceChildren();
-      for(const task of score.tasks){
-        add(details,'h3',names[task.task_id]);
-        const evidence=(data.task_results || []).find(row=>row.task_id===task.task_id);
-        if(task.derived)add(details,'p','Level derived from the movement steps recorded at the time.');
-        for(const attempt of evidence?.metrics?.ladder?.attempts || []){
-          add(details,'p',`${attempt.rung} · ${attempt.completed?'reached':'not reached'} · ${(attempt.duration_ms/1000).toFixed(1)} seconds${attempt.assist?' · with '+(attempt.assist==='self'?'your other hand':'a helper'):''}`);
-          for(const [name,delta] of Object.entries(attempt.angles_from_rest || {}))if(typeof delta==='number' && Number.isFinite(delta))add(details,'p',`${name.replaceAll('_',' ')}: ${Math.round(delta)}° from rest`);
-        }
-        if(task.unmeasured_compensations?.length)add(details,'p',`Could not measure: ${task.unmeasured_compensations.map(id=>postureLabels[id] || id).join(', ')}.`);
-        if(evidence?.metrics?.effort)add(details,'p',`Reported effort: ${evidence.metrics.effort}. Pain: ${evidence.metrics.pain || 'not answered'}.`);
-      }
-      byId('analysisDetails').hidden=!details.children.length;
-      byId('analysisDetails').open=typeof root.location?.search==='string' && new URLSearchParams(root.location.search).get('library_test')==='1';
     }
     let busy=false, finished=false;
     exit.onclick=()=>onExit?.();
@@ -2241,7 +2225,6 @@ window.REHYN_ASSESSMENT_RUBRIC={"version": "rehyn-task-quality-1", "compensation
   #analysisAreas{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px;margin:22px 0}
   .analysisArea{border:1px solid #aac7b52b;border-radius:18px;padding:18px;background:#c7efda09}.analysisArea h2{font-size:16px;font-weight:500;margin:0 0 8px}.analysisArea strong{font-size:29px;color:#c5f2d2}.analysisArea small{display:block;color:#c0d3c8;line-height:1.45;margin-top:8px}
   #analysisChange{color:#b4edc5;margin:12px 0 0;font-size:16px}
-  #analysisDetails{border-top:1px solid #aac7b52b;padding-top:20px;color:#d1e3d7}#analysisDetails summary{cursor:pointer;font-size:18px;font-weight:600;min-height:44px}#analysisDetailsContent{font-size:15px;line-height:1.6}#analysisDetailsContent h3{font-size:17px;margin:20px 0 6px}
   #analysisActions{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin-top:28px}
   #analysisActions button{border:0;border-radius:18px;padding:15px 28px;min-height:52px;font:inherit;font-weight:650;cursor:pointer;background:#b0e6c1;color:#183526}
   #analysisActions button:focus-visible{outline:3px solid #fff;outline-offset:4px}
@@ -2292,7 +2275,6 @@ window.REHYN_ASSESSMENT_RUBRIC={"version": "rehyn-task-quality-1", "compensation
     <section id="analysisAreas" hidden aria-label="Body areas"></section>
     <ul id="analysisResults" hidden aria-label="Movement results"></ul>
     <section id="analysisCoaching" class="analysisSection" hidden><h2>How you moved</h2><div id="analysisCoachingRows"></div></section>
-    <details id="analysisDetails" class="analysisSection" hidden><summary>Details</summary><div id="analysisDetailsContent"></div></details>
     <div id="analysisActions" hidden><button id="analysisRetry" type="button" hidden>Try again</button><button id="analysisExit" type="button">Done</button></div>
   </div>
 </section>
